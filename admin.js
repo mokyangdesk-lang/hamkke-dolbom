@@ -84,6 +84,7 @@
         catch (err) { toast(err.message); } finally { btn.disabled = false; }
       };
       const list = () => {
+        if (!$('#staffFilter') || !$('#staffList')) return; // 불러오는 사이 다른 화면으로 옮긴 경우
         const filter = $('#staffFilter').value, rows = (ctx.cache.staff || []).filter(r => !filter || (filter === 'new' ? !r.district : r.district === filter));
         $('#staffList').innerHTML = rows.length ? rows.map(r => `<div class="row"><div class="grow"><b>${esc(r.display_name)}</b> <span class="chip ${r.status === 'active' ? 'ok' : 'warn'}">${r.status === 'active' ? '사용 중' : '접근 중지'}</span>
           <div class="muted small">${esc(ROLE[r.role] || r.role)} · ${esc(r.district || '모든 교구 새가족')} · 코드 발급 ${esc(date(r.code_issued_at))}${r.phone ? ' · ' + esc(r.phone) : ''}</div></div>
@@ -108,8 +109,9 @@
       const log = async () => {
         try {
           const rows = await store.auditLog(), name = id => (ctx.cache.staff || []).find(s => s.user_id === id)?.display_name || '';
+          if (!$('#staffLog')) return; // 불러오는 사이 다른 화면으로 옮긴 경우
           $('#staffLog').innerHTML = rows.length ? rows.map(l => `<p>${esc(new Date(l.at).toLocaleString('ko-KR'))} · ${esc(ACTION[l.action] || l.action)} · ${esc(name(l.target))}</p>`).join('') : '이력이 없습니다.';
-        } catch (e) { $('#staffLog').textContent = '이력을 불러오지 못했습니다.'; }
+        } catch (e) { const el = $('#staffLog'); if (el) el.textContent = '이력을 불러오지 못했습니다.'; }
       };
       $('#staffFilter').onchange = list;
       await loadStaff(ctx); list(); log();

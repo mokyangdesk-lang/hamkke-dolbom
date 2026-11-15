@@ -293,30 +293,34 @@ dialog::backdrop { background: rgb(10 14 12 / .42); backdrop-filter: blur(3px); 
 .admin-district { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; max-width: var(--page-w, 1080px); margin: 12px auto 0; padding: 10px 16px; border-radius: 14px; background: var(--accent-softer); border: 1px solid var(--line); }
 .admin-district label { display: flex; align-items: center; gap: 8px; font-weight: 700; } .admin-district select { width: auto; min-width: 140px; }
 
-/* 최고 관리자: 묶음별 세로 메뉴 */
-.admin-shell { display: grid; grid-template-columns: 272px minmax(0, 1fr); gap: 0 8px; max-width: 1360px; margin: 0 auto; align-items: start; }
-.admin-shell .page { margin: 0; max-width: 1040px; }
-.admin-shell .admin-district { margin: 20px max(16px, env(safe-area-inset-left)) 0; max-width: 1008px; }
-.menu-btn { display: none; }
-.side { position: sticky; top: var(--top-h, 0); max-height: calc(100vh - var(--top-h, 0px)); max-height: calc(100dvh - var(--top-h, 0px)); overflow-y: auto; padding: 18px 10px 28px 16px; border-right: 1px solid var(--line); }
-.side-head { display: none; }
-.side-group { margin-bottom: 14px; }
-.side-group h2 { font-size: .74rem; letter-spacing: .06em; color: var(--muted); font-weight: 800; margin: 0 0 4px 10px; text-transform: none; }
-.side-item { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; min-height: 0; padding: 8px 10px; border: 0; border-radius: 12px; background: transparent; text-align: left; color: var(--ink); box-shadow: none; }
-.side-item .nav-label { font-weight: 700; font-size: .95rem; }
-.side-item .nav-desc { font-size: .78rem; color: var(--muted); font-weight: 500; line-height: 1.35; }
-.side-item:hover { background: var(--accent-softer); }
-.side-item.active { background: var(--accent-soft); }
-.side-item.active .nav-label { color: var(--accent-text); }
-.side-item.active { box-shadow: inset 3px 0 0 var(--accent); }
+/* 최고 관리자: 큰 영역 5개 + 영역 안의 작은 탭 */
+.admin-shell { display: grid; grid-template-columns: 236px minmax(0, 1fr); max-width: 1360px; margin: 0 auto; align-items: start; }
+.areas { position: sticky; top: var(--top-h, 0); display: flex; flex-direction: column; gap: 6px; padding: 20px 12px 20px 16px; }
+.area-btn { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 64px; padding: 10px 14px; border: 1px solid transparent; border-radius: 16px; background: transparent; color: var(--ink-2); text-align: left; box-shadow: none; }
+.area-btn .ico { width: 26px; height: 26px; flex: none; }
+.area-text { display: flex; flex-direction: column; gap: 1px; } .area-text b { font-size: 1.02rem; color: var(--ink); }
+.area-hint { font-size: .76rem; color: var(--muted); font-weight: 500; }
+.area-btn:hover { background: var(--accent-softer); }
+.area-btn.active { background: var(--surface); border-color: var(--line); color: var(--accent); box-shadow: 0 4px 14px rgb(0 0 0 / .05); }
+.area-btn.active b { color: var(--accent-text); }
+.admin-main { min-width: 0; }
+.area-bar { position: sticky; top: var(--top-h, 0); z-index: 15; padding: 14px max(16px, env(safe-area-inset-left)) 10px; background: color-mix(in oklab, var(--bg) 92%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+.subtabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; } .subtabs::-webkit-scrollbar { display: none; }
+.subtabs button { flex: none; min-height: 40px; padding: 0 16px; border-radius: 99px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); font-size: .92rem; box-shadow: none; }
+.subtabs button.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 700; }
+.subdesc { margin: 8px 2px 0; font-size: .82rem; color: var(--muted); }
+.admin-shell .page { margin: 0; max-width: 1040px; padding-top: 22px; }
+.admin-shell .admin-district { margin: 16px max(16px, env(safe-area-inset-left)) 0; max-width: 1008px; }
 @media (max-width: 900px) {
-  .admin-shell { display: block; }
-  .menu-btn { display: flex; align-items: center; gap: 8px; width: calc(100% - 32px); margin: 12px 16px 0; min-height: 48px; padding: 0 14px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); text-align: left; font-weight: 700; }
-  .menu-btn .menu-ico { font-size: 1.15rem; } .menu-now { margin-left: auto; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .side { display: none; }
-  .admin-shell.open .side { display: block; position: fixed; inset: 0; z-index: 60; max-height: none; height: 100%; padding: 12px 16px calc(24px + env(safe-area-inset-bottom)); background: var(--bg); border: 0; }
-  .admin-shell.open .side-head { display: flex; align-items: center; justify-content: space-between; position: sticky; top: -12px; margin: -12px -16px 10px; padding: 12px 16px; background: var(--bg); border-bottom: 1px solid var(--line); }
-  .side-item { padding: 12px; } .side-group h2 { margin-top: 10px; }
-  .admin-shell .admin-district { margin: 12px 16px 0; }
+  .admin-shell { display: block; padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+  .areas { position: fixed; top: auto; left: 0; right: 0; bottom: 0; z-index: 40; flex-direction: row; gap: 0; padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--line); box-shadow: 0 -6px 20px rgb(0 0 0 / .06); }
+  .area-btn { flex: 1; flex-direction: column; justify-content: center; gap: 3px; min-height: 58px; padding: 4px 2px; border-radius: 12px; text-align: center; }
+  .area-btn .ico { width: 24px; height: 24px; } .area-text b { font-size: .76rem; color: inherit; } .area-hint { display: none; }
+  .area-btn.active { background: var(--accent-soft); border-color: transparent; box-shadow: none; }
+  .area-bar { padding: 10px 16px 8px; }
+  .admin-shell ~ .credit { padding-bottom: calc(90px + env(safe-area-inset-bottom)); }
 }
-@media print { .side, .menu-btn { display: none !important; } .admin-shell { display: block; } }
+@media print { .areas, .area-bar { display: none !important; } .admin-shell { display: block; } }
+
+.update-bar { position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 80; display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 18px; border-radius: 16px; background: var(--ink); color: var(--bg); box-shadow: 0 10px 30px rgb(0 0 0 / .2); font-weight: 700; max-width: calc(100% - 32px); }
+.update-bar button { min-height: 40px; }
