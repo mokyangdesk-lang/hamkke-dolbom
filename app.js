@@ -8,13 +8,24 @@
 
   // 역할별 메뉴(순서대로). 각 화면은 Pages에 등록됩니다(admin.js 등).
   const NAV = {
-    admin: ['staff', 'groups', 'imports', 'roster', 'board', 'attendance', 'matching', 'today', 'people', 'message', 'reports', 'handover', 'nreports', 'assign', 'templates', 'theme', 'data'],
+    admin: [], // 아래 ADMIN_MENU 순서대로 채웁니다.
     newcomer_admin: ['board', 'attendance', 'matching', 'imports'],
     newcomer_pastor: ['board', 'attendance', 'nreports', 'message'],
     district_pastor: ['today', 'people', 'message', 'reports', 'handover', 'assign'],
     committee: ['board', 'attendance', 'message', 'nreport'],
     visitor: ['today', 'people', 'message', 'report'],
   };
+  // 최고 관리자 메뉴: 묶음별 세로 메뉴(휴대폰에서는 "메뉴" 단추로 엽니다). [화면, 한 줄 설명]
+  const ADMIN_MENU = [
+    ['사람 · 권한', [['staff', '등록 · 코드 발급 · 접근 중지 · 주소 문자'], ['assign', '교구별 심방사역자와 성도 현황']]],
+    ['명단', [['imports', '교적 엑셀 올리기 · 양식 받기'], ['roster', '돌봄 성도 · 새가족 명단 보기'], ['groups', '교구 이름 · 심방사역자 있는 교구']]],
+    ['새가족', [['board', '단계별 진행 · 다음 할 일'], ['attendance', '새가족교육 4과목 출석'], ['matching', '4과목 마친 분과 양육도우미 잇기'], ['handover', '정착한 분을 교구로 인계'], ['nreports', '새가족위원 주간 보고 보기']]],
+    ['심방 (교구별)', [['today', '교구를 골라 오늘 할 일'], ['people', '교구 성도 · 연락 기록'], ['reports', '심방사역자 주간 보고 보기']]],
+    ['문자', [['message', '받는 사람 → 예문 → 문자 앱'], ['templates', '교회 공통 예문 · 기준 일수']]],
+    ['설정 · 자료', [['theme', '색 · 글꼴 · 밝기 · 글자 크기'], ['data', '백업 · 한 분 지우기 · 초기화 · 되살리기']]],
+  ];
+  NAV.admin = ADMIN_MENU.flatMap(([, items]) => items.map(([id]) => id));
+  let menuOpen = false;
   const Pages = root.HamkkePages = root.HamkkePages || {};
 
   let state = C.empty(), page = '', cache = {}, loading = false, adminDistrict = '';
@@ -24,7 +35,7 @@
   const me = () => { const m = store.status(); return m && m.role === 'admin' && DISTRICT_PAGES.includes(page) ? { ...m, district: pickedDistrict() } : m; };
   const scoped = () => { const m = me(); if (!(m && m.role === 'admin' && DISTRICT_PAGES.includes(page))) return state; const d = m.district; return { ...state, people: state.people.filter(p => p.district === d) }; };
   const ctx = () => ({ state: scoped(), me: me(), cache, commit, refresh, render, go, toast, dialog, closeDialog, ask });
-  function go(id) { page = id; render(); }
+  function go(id) { page = id; menuOpen = false; render(); }
 
   // 바꾼 내용을 서버에 저장. 실패하면 화면을 저장 전 상태로 되돌립니다.
   async function commit(mutate, okMessage = '저장했습니다.') {
@@ -109,10 +120,24 @@
     return `<header class="top"><div class="brand"><span class="brand-mark sm" aria-hidden="true">✦</span><span>함께 돌봄</span><span class="ministry-tag">${esc(ministry)}</span></div>
       <div class="who"><b>${esc(m.name || '')}</b> <span class="muted">${esc(ROLE[m.role])}${m.district ? ' · ' + esc(m.district) : ''}</span></div>
       <div class="top-acts"><span id="syncState" class="muted small" role="status">서버와 연결됨</span><button id="alertsBtn" class="${page === 'alerts' ? 'primary' : 'quiet'}" aria-label="알림 ${alerts}건">알림${alerts ? ` <span class="badge">${alerts}</span>` : ''}</button><button id="refreshBtn" class="quiet" title="다른 기기에서 바꾼 내용을 불러옵니다" aria-label="새로고침"><span aria-hidden="true">↻</span><span class="lbl">새로고침</span></button><button id="logoutBtn" class="quiet">로그아웃</button></div></header>
-      ${nav.length > 1 ? `<nav class="tabs" aria-label="메뉴">${nav.map(id => `<button data-page="${id}" class="${id === page ? 'active' : ''}" ${id === page ? 'aria-current="page"' : ''}>${esc(Pages[id]?.label || id)}</button>`).join('')}</nav>` : ''}
-      ${m.role === 'admin' && DISTRICT_PAGES.includes(page) ? `<div class="admin-district"><label>교구 <select id="adminDistrict">${C.groups(state).map(g => `<option ${g.name === m.district ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select></label><span class="muted small">최고 관리자: 고른 교구의 화면으로 봅니다</span></div>` : ''}
-      <main id="main" class="page">${P ? P.render(ctx()) : ''}</main>
+      ${m.role === 'admin' ? adminShell(m, P) : nav.length > 1 ? `<nav class="tabs" aria-label="메뉴">${nav.map(id => `<button data-page="${id}" class="${id === page ? 'active' : ''}" ${id === page ? 'aria-current="page"' : ''}>${esc(Pages[id]?.label || id)}</button>`).join('')}</nav>` : ''}
+      ${m.role === 'admin' ? '' : `<main id="main" class="page">${P ? P.render(ctx()) : ''}</main>`}
       <footer class="credit">${esc(CREDIT)}</footer>`;
+  }
+  function districtBar(m) {
+    return `${DISTRICT_PAGES.includes(page) ? `<div class="admin-district"><label>교구 <select id="adminDistrict">${C.groups(state).map(g => `<option ${g.name === m.district ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select></label><span class="muted small">최고 관리자: 고른 교구의 화면으로 봅니다</span></div>` : ''}`;
+  }
+  function adminShell(m, P) {
+    const label = id => Pages[id]?.label || id;
+    const group = ADMIN_MENU.find(([, items]) => items.some(([id]) => id === page));
+    return `<div class="admin-shell ${menuOpen ? 'open' : ''}">
+      <button type="button" class="menu-btn" id="menuBtn" aria-expanded="${menuOpen}" aria-controls="sideNav"><span class="menu-ico" aria-hidden="true">☰</span><span>메뉴</span><span class="menu-now"><span class="muted">${esc(group ? group[0] : '')} ·</span> <b>${esc(page === 'alerts' ? '알림' : label(page))}</b></span></button>
+      <nav class="side" id="sideNav" aria-label="관리자 메뉴">
+        <div class="side-head"><b>관리자 메뉴</b><button type="button" class="quiet" id="menuClose">닫기</button></div>
+        ${ADMIN_MENU.map(([g, items]) => `<section class="side-group"><h2>${esc(g)}</h2>${items.map(([id, desc]) => `<button type="button" data-page="${id}" class="side-item ${id === page ? 'active' : ''}" ${id === page ? 'aria-current="page"' : ''}><span class="nav-label">${esc(label(id))}</span><span class="nav-desc">${esc(desc)}</span></button>`).join('')}</section>`).join('')}
+      </nav>
+      <div class="admin-main">${districtBar(m)}<main id="main" class="page">${P ? P.render(ctx()) : ''}</main></div>
+    </div>`;
   }
   function render() {
     if (!me().signedIn) return renderLogin();
@@ -122,6 +147,9 @@
     $$('[data-page]').forEach(b => b.onclick = () => go(b.dataset.page));
     $('#refreshBtn').onclick = () => refresh();
     const ad = $('#adminDistrict'); if (ad) ad.onchange = () => { adminDistrict = ad.value; render(); };
+    const mb = $('#menuBtn'); if (mb) mb.onclick = () => { menuOpen = !menuOpen; render(); if (menuOpen) $('.side-item.active')?.focus(); };
+    const mc = $('#menuClose'); if (mc) mc.onclick = () => { menuOpen = false; render(); $('#menuBtn')?.focus(); };
+    document.onkeydown = e => { if (e.key === 'Escape' && menuOpen) { menuOpen = false; render(); } };
     $('#alertsBtn').onclick = () => go('alerts');
     $('#logoutBtn').onclick = async () => { if (await ask('로그아웃', '이 기기에서 로그아웃합니다. 다시 들어오려면 이름과 코드가 필요합니다.', '로그아웃')) { await store.signOut(); renderLogin('로그아웃했습니다.'); } };
     Pages[page]?.bind?.(ctx());
