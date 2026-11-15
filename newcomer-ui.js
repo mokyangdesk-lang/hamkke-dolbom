@@ -9,7 +9,7 @@
   const today = () => C.iso(K.now());
   const TEAM = ['newcomer_pastor', 'newcomer_admin', 'admin'];
   const canProgress = me => ['committee', ...TEAM].includes(me.role);         // 단계·새사귐 기록
-  const canAttendance = me => TEAM.includes(me.role);                          // 4과목 출석
+  const canAttendance = me => ['committee', ...TEAM].includes(me.role);         // 4과목 출석(위원은 자기 교구)
 
   function dots(st) {
     return `<ol class="dots" aria-label="진행 단계">${st.map(s => `<li class="${s.done ? 'done' : s.overdue ? 'late' : ''}" title="${esc(s.label)}${s.detail ? ' · ' + esc(s.detail) : ''}"><span class="visually-hidden">${esc(s.label)} ${s.done ? '완료' : s.overdue ? '늦어짐' : '아직'}</span></li>`).join('')}</ol>`;
@@ -170,8 +170,8 @@
     };
   }
 
-  // ── 4과목 출석 (새가족 담당 목사·새가족 관리자·전체 관리자)
-  let attSubject = '1', attDate = '';
+  // ── 4과목 출석 (새가족 담당 목사·새가족 관리자·최고 관리자·새가족위원)
+  let attSubject = '1', attDate = '', lastAbsent = [];
   Pages.attendance = {
     label: '4과목 출석',
     render(ctx) {
@@ -183,6 +183,7 @@
       <p class="subtitle">순서와 상관없이 네 과목을 모두 들으면 이수입니다. 4과목을 마친 분은 "양육도우미 매칭"에 나타납니다.</p>
       <section class="card"><div class="form-grid"><label>과목<select id="attSubject">${names.map((n, i) => `<option value="${i + 1}" ${String(i + 1) === attSubject ? 'selected' : ''}>${i + 1}. ${esc(n)}</option>`).join('')}</select></label>
         <label>날짜<input type="date" id="attDate" value="${date}" max="${today()}"></label></div>
+        ${lastAbsent.length ? `<div class="notice"><b>결석 ${lastAbsent.length}명</b>을 저장했습니다. 안부 문자를 보내 보세요. <button type="button" class="primary" id="absentSms">결석한 분께 문자</button></div>` : ''}
         ${list.length ? `<form id="attForm"><div class="list">${list.map(p => { const has = doneSet(p).has(attSubject); return `<div class="row"><div class="grow"><b>${esc(p.name)}</b> <span class="muted small">${esc(p.district)} · ${doneSet(p).size}/4</span>${has ? ' <span class="chip ok">이 과목 이수</span>' : ''}</div>
           ${has ? '' : `<div class="seg" role="radiogroup" aria-label="${esc(p.name)} 출석">${[['', '—'], ['completed', '출석'], ['absent', '결석'], ['makeup', '보강']].map(([v, l]) => `<label class="seg-opt"><input type="radio" name="a-${esc(p.id)}" value="${v}" ${v === '' ? 'checked' : ''}> ${l}</label>`).join('')}</div>`}</div>`; }).join('')}</div>
           <p class="muted small">보강은 빠진 과목을 다음 순서에 들은 경우입니다. 보강도 이수로 세려면 "출석"으로 표시해 주세요.</p>
@@ -191,20 +192,22 @@
     bind(ctx) {
       $('#attSubject').onchange = e => { attSubject = e.target.value; ctx.render(); };
       $('#attDate').onchange = e => { attDate = e.target.value; };
+      const as = $('#absentSms'); if (as) as.onclick = () => { const ids = lastAbsent; lastAbsent = []; root.HamkkeVisit.startMessage(ctx, ids, 'absent', 'new'); };
       const f = $('#attForm'); if (!f) return;
       f.onsubmit = e => {
         e.preventDefault(); const date = $('#attDate').value, data = new FormData(f);
         if (!C.validDate(date) || date > today()) return toast('날짜를 확인해 주세요.');
         const marks = [...data.entries()].filter(([k, v]) => k.startsWith('a-') && v).map(([k, v]) => [k.slice(2), v]);
         if (!marks.length) return toast('표시한 분이 없습니다.');
-        ctx.commit(s => { for (const [pid, status] of marks) C.upsertEducation(s, { id: uid(), personId: pid, course: 'welcome', subject: attSubject, status, date, recordedBy: ctx.me.name }); }, `${marks.length}명의 출석을 저장했습니다.`);
+        const absent = marks.filter(([, v]) => v === 'absent').map(([pid]) => pid);
+        ctx.commit(s => { for (const [pid, status] of marks) C.upsertEducation(s, { id: uid(), personId: pid, course: 'welcome', subject: attSubject, status, date, recordedBy: ctx.me.name }); lastAbsent = absent; }, `${marks.length}명의 출석을 저장했습니다.`);
       };
     },
   };
 
   // ── 교구 목사: 인계 받기 + 우리 교구 새가족(읽기) + 확인 요청
   Pages.handover = {
-    label: '새가족',
+    get label() { return root.HamkkeApp?.ctx().me.role === 'admin' ? '새가족 인계' : '새가족'; },
     render(ctx) {
       const s = ctx.state, ready = N.handoverReady(s).filter(p => p.district === ctx.me.district), reqs = N.openRequests(s, ctx.me);
       const list = N.newcomers(s).filter(p => !ready.includes(p));
@@ -265,7 +268,7 @@
   // 새가족 담당 목사: 모든 교구의 승인된 새가족 보고
   let npWeek = 0, npOpen = '';
   Pages.nreports = {
-    label: '보고 받기',
+    get label() { return root.HamkkeApp?.ctx().me.role === 'admin' ? '새가족 보고 받기' : '보고 받기'; },
     render(ctx) {
       const s = ctx.state, w = K.reportWindow(npWeek), weeks = [0, 1, 2, 3, 4, 5, 6, 7].map(n => K.reportWindow(n));
       if (npOpen) { const r = s.reports.find(x => x.id === npOpen); if (r) return `<div class="acts no-print"><button type="button" id="npBack">← 보고 목록</button><button type="button" id="npPrint">인쇄 · PDF로 저장</button></div><section class="card">${reportDoc(r)}</section>`; npOpen = ''; }

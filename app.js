@@ -8,18 +8,22 @@
 
   // 역할별 메뉴(순서대로). 각 화면은 Pages에 등록됩니다(admin.js 등).
   const NAV = {
-    admin: ['staff', 'groups', 'imports', 'roster', 'board', 'attendance', 'matching', 'assign', 'templates', 'theme', 'data'],
+    admin: ['staff', 'groups', 'imports', 'roster', 'board', 'attendance', 'matching', 'today', 'people', 'message', 'reports', 'handover', 'nreports', 'assign', 'templates', 'theme', 'data'],
     newcomer_admin: ['board', 'attendance', 'matching', 'imports'],
     newcomer_pastor: ['board', 'attendance', 'nreports', 'message'],
     district_pastor: ['today', 'people', 'message', 'reports', 'handover', 'assign'],
-    committee: ['board', 'message', 'nreport'],
+    committee: ['board', 'attendance', 'message', 'nreport'],
     visitor: ['today', 'people', 'message', 'report'],
   };
   const Pages = root.HamkkePages = root.HamkkePages || {};
 
-  let state = C.empty(), page = '', cache = {}, loading = false;
-  const me = () => store.status();
-  const ctx = () => ({ state, me: me(), cache, commit, refresh, render, go, toast, dialog, closeDialog, ask });
+  let state = C.empty(), page = '', cache = {}, loading = false, adminDistrict = '';
+  // 최고 관리자는 모든 화면을 씁니다. 교구 화면(오늘 할 일·성도·보고 받기·인계)은 위에서 고른 교구로 봅니다.
+  const DISTRICT_PAGES = ['today', 'people', 'reports', 'handover'];
+  const pickedDistrict = () => { const g = C.groups(state).map(x => x.name); return g.includes(adminDistrict) ? adminDistrict : g[0] || ''; };
+  const me = () => { const m = store.status(); return m && m.role === 'admin' && DISTRICT_PAGES.includes(page) ? { ...m, district: pickedDistrict() } : m; };
+  const scoped = () => { const m = me(); if (!(m && m.role === 'admin' && DISTRICT_PAGES.includes(page))) return state; const d = m.district; return { ...state, people: state.people.filter(p => p.district === d) }; };
+  const ctx = () => ({ state: scoped(), me: me(), cache, commit, refresh, render, go, toast, dialog, closeDialog, ask });
   function go(id) { page = id; render(); }
 
   // 바꾼 내용을 서버에 저장. 실패하면 화면을 저장 전 상태로 되돌립니다.
@@ -106,6 +110,7 @@
       <div class="who"><b>${esc(m.name || '')}</b> <span class="muted">${esc(ROLE[m.role])}${m.district ? ' · ' + esc(m.district) : ''}</span></div>
       <div class="top-acts"><span id="syncState" class="muted small" role="status">서버와 연결됨</span><button id="alertsBtn" class="${page === 'alerts' ? 'primary' : 'quiet'}" aria-label="알림 ${alerts}건">알림${alerts ? ` <span class="badge">${alerts}</span>` : ''}</button><button id="refreshBtn" class="quiet" title="다른 기기에서 바꾼 내용을 불러옵니다" aria-label="새로고침"><span aria-hidden="true">↻</span><span class="lbl">새로고침</span></button><button id="logoutBtn" class="quiet">로그아웃</button></div></header>
       ${nav.length > 1 ? `<nav class="tabs" aria-label="메뉴">${nav.map(id => `<button data-page="${id}" class="${id === page ? 'active' : ''}" ${id === page ? 'aria-current="page"' : ''}>${esc(Pages[id]?.label || id)}</button>`).join('')}</nav>` : ''}
+      ${m.role === 'admin' && DISTRICT_PAGES.includes(page) ? `<div class="admin-district"><label>교구 <select id="adminDistrict">${C.groups(state).map(g => `<option ${g.name === m.district ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select></label><span class="muted small">최고 관리자: 고른 교구의 화면으로 봅니다</span></div>` : ''}
       <main id="main" class="page">${P ? P.render(ctx()) : ''}</main>
       <footer class="credit">${esc(CREDIT)}</footer>`;
   }
@@ -116,6 +121,7 @@
     const top = $('.top'); if (top) document.documentElement.style.setProperty('--top-h', top.offsetHeight + 'px');
     $$('[data-page]').forEach(b => b.onclick = () => go(b.dataset.page));
     $('#refreshBtn').onclick = () => refresh();
+    const ad = $('#adminDistrict'); if (ad) ad.onchange = () => { adminDistrict = ad.value; render(); };
     $('#alertsBtn').onclick = () => go('alerts');
     $('#logoutBtn').onclick = async () => { if (await ask('로그아웃', '이 기기에서 로그아웃합니다. 다시 들어오려면 이름과 코드가 필요합니다.', '로그아웃')) { await store.signOut(); renderLogin('로그아웃했습니다.'); } };
     Pages[page]?.bind?.(ctx());

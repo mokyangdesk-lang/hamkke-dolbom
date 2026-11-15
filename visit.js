@@ -98,9 +98,11 @@
   };
 
   // ── 문자 보내기: 누구에게 → 어떤 문자 → 고치기·미리 보기 → 문자 앱 열기(한 명씩)
-  let flow = { step: 1, ids: [], tpl: '', text: '', i: 0 };
+  let flow = { step: 1, ids: [], tpl: '', text: '', i: 0 }, adminMin = 'visit';
   // 새가족위원·새가족팀은 새가족 명단과 새가족 예문을, 심방 쪽은 교구 성도와 심방 예문을 씁니다.
-  const ministryOf = me => ['committee', 'newcomer_pastor', 'newcomer_admin'].includes(me.role) ? 'new' : 'visit';
+  const ministryOf = me => me.role === 'admin' ? adminMin : ['committee', 'newcomer_pastor', 'newcomer_admin'].includes(me.role) ? 'new' : 'visit';
+  // 교육(4과목·새사귐)에 빠진 뒤 아직 그 과목을 마치지 않은 새가족
+  const missedEducation = s => root.NewcomerCore.newcomers(s).filter(p => s.education.some(e => e.personId === p.id && e.status === 'absent' && !C.completed(s, p.id, e.course).has(String(e.subject))));
   const msgPeople = ctx => ministryOf(ctx.me) === 'new' ? root.NewcomerCore.newcomers(ctx.state) : K.carePeople(ctx.state);
   Pages.message = {
     label: '문자',
@@ -111,8 +113,8 @@
       const head = `<div class="eyebrow">${min === 'new' ? '새가족' : '심방'}</div><h1 class="page-title">문자 보내기</h1>
         <ol class="flow steps">${steps.map((t, i) => `<li class="${i + 1 === flow.step ? 'now' : i + 1 < flow.step ? 'done' : ''}">${t}</li>`).join('')}</ol>`;
       if (flow.step === 1) {
-        const quick = min === 'new' ? [['nc-active', '진행 중'], ['nc-waiting', '매칭 대기'], ['nc-fellowship', '새사귐 중']] : [['all', '교구 전체'], ['bday', '7일 안 생일'], ['due', '다시 연락할 분'], ['long', '오래 연락 못 한 분']];
-        return head + `<section class="card"><h2>누구에게 보낼까요?</h2><div class="acts">${quick.map(([k, l]) => `<button type="button" data-quick="${k}">${l} 고르기</button>`).join('')}<button type="button" data-quick="clear" class="quiet">모두 해제</button></div>
+        const quick = min === 'new' ? [['nc-active', '진행 중'], ['nc-absent', '교육 빠진 분'], ['nc-waiting', '매칭 대기'], ['nc-fellowship', '새사귐 중']] : [['all', '교구 전체'], ['bday', '7일 안 생일'], ['due', '다시 연락할 분'], ['long', '오래 연락 못 한 분']];
+        return head + (ctx.me.role === 'admin' ? `<div class="seg" role="group" aria-label="사역">${[['visit', '심방 (교구 성도)'], ['new', '새가족']].map(([k, l]) => `<button type="button" data-min="${k}" class="${min === k ? 'active' : ''}">${l}</button>`).join('')}</div>` : '') + `<section class="card"><h2>누구에게 보낼까요?</h2><div class="acts">${quick.map(([k, l]) => `<button type="button" data-quick="${k}">${l} 고르기</button>`).join('')}<button type="button" data-quick="clear" class="quiet">모두 해제</button></div>
           <div class="list" style="margin-top:12px">${people.map(p => `<label class="row pick"><input type="checkbox" name="to" value="${esc(p.id)}" ${flow.ids.includes(p.id) ? 'checked' : ''} ${p.phone ? '' : 'disabled'}><span class="grow"><b>${esc(p.name)}</b> <span class="muted small">${p.phone ? esc(p.phone) : '전화번호 없음'}</span></span></label>`).join('')}</div>
           <div class="acts sticky-acts"><button type="button" class="primary" id="toStep2">다음: 어떤 문자 (${flow.ids.length}명)</button></div></section>`;
       }
@@ -138,11 +140,12 @@
       $$('input[name=to]').forEach(c => c.onchange = () => { flow.ids = $$('input[name=to]:checked').map(x => x.value); $('#toStep2').textContent = `다음: 어떤 문자 (${flow.ids.length}명)`; });
       $$('[data-quick]').forEach(b => b.onclick = () => {
         const k = b.dataset.quick, has = p => p.phone, N = root.NewcomerCore;
-        const pick = k.startsWith('nc-') ? N.newcomers(s).filter(p => { const bk = N.bucket(s, p); return k === 'nc-active' ? !['settled', 'paused'].includes(bk) : bk === k.slice(3); })
+        const pick = k === 'nc-absent' ? missedEducation(s) : k.startsWith('nc-') ? N.newcomers(s).filter(p => { const bk = N.bucket(s, p); return k === 'nc-active' ? !['settled', 'paused'].includes(bk) : bk === k.slice(3); })
           : k === 'all' ? K.carePeople(s) : k === 'bday' ? K.carePeople(s).filter(p => { const d = C.birthdayDistance(p, today()); return d !== null && d >= 0 && d <= 7; })
           : k === 'due' ? K.dueRecontacts(s).map(x => x.p) : k === 'long' ? K.longNoContact(s).map(x => x.p) : [];
         flow.ids = k === 'clear' ? [] : [...new Set([...flow.ids, ...pick.filter(has).map(p => p.id)])]; ctx.render();
       });
+      $$('[data-min]').forEach(b => b.onclick = () => { adminMin = b.dataset.min; flow = { step: 1, ids: [], tpl: '', text: '', i: 0 }; ctx.render(); });
       const t2 = $('#toStep2'); if (t2) t2.onclick = () => { if (!flow.ids.length) return toast('받는 분을 골라 주세요.'); flow.step = 2; ctx.render(); };
       $$('[data-tpl]').forEach(b => b.onclick = () => { const t = M.templatesFor(s, ministryOf(ctx.me)).find(x => x.key === b.dataset.tpl); flow.tpl = t.key; flow.text = t.text; flow.step = 3; ctx.render(); });
       $$('[data-step]').forEach(b => b.onclick = () => { const n = Number(b.dataset.step); if (n === 4 && !flow.text.trim()) return toast('문구를 입력해 주세요.'); flow.step = n; flow.i = 0; ctx.render(); });
@@ -205,7 +208,7 @@
   // 교구 목사: 사역자별 승인 여부와 보고서 보기(승인 전 초안은 서버가 보내지 않음)
   let pastorWeek = 0, openReport = '';
   Pages.reports = {
-    label: '보고 받기',
+    get label() { return root.HamkkeApp?.ctx().me.role === 'admin' ? '심방 보고 받기' : '보고 받기'; },
     render(ctx) {
       const s = ctx.state, w = K.reportWindow(pastorWeek), weeks = [0, 1, 2, 3, 4, 5, 6, 7].map(n => K.reportWindow(n));
       const visitors = (ctx.cache.staff || []).filter(x => x.role === 'visitor' && x.district === ctx.me.district);
@@ -239,6 +242,10 @@
     },
   };
 
-  function startMessage(ctx, ids) { flow = { step: 2, ids, tpl: '', text: '', i: 0 }; ctx.go('message'); }
+  function startMessage(ctx, ids, tplKey = '', min = '') {
+    if (min && ctx.me.role === 'admin') adminMin = min;
+    const t = tplKey ? M.templatesFor(ctx.state, ministryOf(ctx.me)).find(x => x.key === tplKey) : null;
+    flow = t ? { step: 3, ids, tpl: t.key, text: t.text, i: 0 } : { step: 2, ids, tpl: '', text: '', i: 0 }; ctx.go('message');
+  }
   root.HamkkeVisit = { visitForm, reportDoc, startMessage, resetFlow: () => { flow = { step: 1, ids: [], tpl: '', text: '', i: 0 }; } };
 })(window);
