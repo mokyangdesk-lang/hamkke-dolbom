@@ -22,12 +22,27 @@
   };
 
   // 접속 코드는 이 창에서 한 번만 보여 줍니다. 닫으면 화면에서도 지워집니다.
-  function showCode(title, name, code) {
+  // 코드 안내 문자: 역할에 맞는 주소 + 이름 + 코드. 문자 앱으로 넘겨줄 뿐, 코드는 어디에도 저장하지 않습니다.
+  function codeMessage(name, role, code) {
+    const base = root.location.origin + root.location.pathname.replace(/[^/]*$/, '');
+    const q = role === 'visitor' ? '?for=visit' : role === 'committee' ? '?for=new' : '';
+    return `[함께 돌봄] ${name}님 접속 안내\n주소: ${base}${q}\n이름: ${name}\n코드: ${code}\n코드는 본인만 보관해 주세요. 사용 안내: ${base}guide/`;
+  }
+  // 주소만 다시 보내는 안내(코드 없음). 담당자 목록의 "문자" 버튼에서 씁니다.
+  function linkMessage(name, role) {
+    const base = root.location.origin + root.location.pathname.replace(/[^/]*$/, '');
+    const q = role === 'visitor' ? '?for=visit' : role === 'committee' ? '?for=new' : '';
+    return `[함께 돌봄] ${name}님, 접속 주소를 다시 보내 드립니다.\n주소: ${base}${q}\n사용 안내(홈 화면 추가 방법): ${base}guide/\n로그인은 이름과 받으신 코드로 하시면 됩니다. 코드를 잊으셨으면 말씀해 주세요.`;
+  }
+  function showCode(title, name, code, role, phone) {
+    const M = root.Messages, msg = codeMessage(name, role, code);
     const body = dialog(title, `<p><b>${esc(name)}</b>님의 접속 코드입니다. <b>이 창을 닫으면 다시 볼 수 없습니다.</b></p>
       <div class="code-box"><span class="code">${esc(code)}</span><button type="button" id="copyCode">복사</button></div>
-      <p class="notice">코드는 본인에게 직접 전해 주세요. 잃어버리면 새로 발급하며, 그때 이 코드는 쓸 수 없게 됩니다.</p>
+      <div class="acts">${phone ? `<a class="button primary" id="smsCode" href="${esc(M.smsHref(phone, msg))}">문자로 보내기 · ${esc(phone)}</a>` : '<span class="muted small">휴대전화를 넣어 두면 여기서 바로 문자로 보낼 수 있습니다.</span>'}<button type="button" id="copyMsg">안내 문구 복사</button></div>
+      <p class="notice">코드는 본인에게만 전해 주세요(단톡방에 올리지 마세요). 문자 앱이 열려도 실제로 보냈는지는 문자 앱에서 확인해 주세요. 잃어버리면 새로 발급하며, 그때 이 코드는 쓸 수 없게 됩니다.</p>
       <div class="acts"><button type="button" class="primary" id="codeDone">전달했습니다 · 닫기</button></div>`);
     $('#copyCode', body).onclick = e => copyText(code, e.target);
+    $('#copyMsg', body).onclick = e => copyText(msg, e.target);
     $('#codeDone', body).onclick = closeDialog;
   }
 
@@ -42,6 +57,7 @@
       <section class="card"><h2>새 담당자 등록</h2>
         <form id="staffCreate" class="form-grid" novalidate>
           <label>이름<input name="name" id="createName" maxlength="40" autocomplete="off" placeholder="예: 홍길동"></label>
+          <label>휴대전화 <span class="muted small">(코드 문자용, 선택)</span><input name="phone" inputmode="tel" autocomplete="off" maxlength="20" placeholder="010-0000-0000"></label>
           <label>역할<select name="role" id="createRole">${ISSUABLE.map(r => `<option value="${r}">${ROLE[r]}</option>`).join('')}</select></label>
           <label id="createDistrictWrap">교구<select name="district" id="createDistrict">${districtOptions(ctx, 'visitor')}</select></label>
           <p id="createDistrictNote" class="muted small" hidden>새가족팀은 교구 없이 모든 교구의 새가족을 봅니다.</p>
@@ -64,14 +80,14 @@
         if (NEEDS_DISTRICT.includes(f.role) && !f.district) { toast('교구를 골라 주세요. 교구가 없으면 먼저 "교구 설정"을 저장해 주세요.'); return; }
         if (!NEEDS_DISTRICT.includes(f.role)) f.district = '';
         const btn = $('button.primary', e.target); btn.disabled = true;
-        try { const r = await store.staff({ action: 'create', name: f.name, role: f.role, district: f.district }); e.target.reset(); syncRole(); await loadStaff(ctx, true); list(); showCode('코드 발급', f.name, r.code); }
+        try { const r = await store.staff({ action: 'create', name: f.name, role: f.role, district: f.district, phone: f.phone || '' }); e.target.reset(); syncRole(); await loadStaff(ctx, true); list(); showCode('코드 발급', f.name, r.code, f.role, f.phone); }
         catch (err) { toast(err.message); } finally { btn.disabled = false; }
       };
       const list = () => {
         const filter = $('#staffFilter').value, rows = (ctx.cache.staff || []).filter(r => !filter || (filter === 'new' ? !r.district : r.district === filter));
         $('#staffList').innerHTML = rows.length ? rows.map(r => `<div class="row"><div class="grow"><b>${esc(r.display_name)}</b> <span class="chip ${r.status === 'active' ? 'ok' : 'warn'}">${r.status === 'active' ? '사용 중' : '접근 중지'}</span>
-          <div class="muted small">${esc(ROLE[r.role] || r.role)} · ${esc(r.district || '모든 교구 새가족')} · 코드 발급 ${esc(date(r.code_issued_at))}</div></div>
-          <div class="acts"><button data-st="edit" data-id="${r.user_id}">교구·역할 바꾸기</button><button data-st="reissue" data-id="${r.user_id}">코드 다시 발급</button>
+          <div class="muted small">${esc(ROLE[r.role] || r.role)} · ${esc(r.district || '모든 교구 새가족')} · 코드 발급 ${esc(date(r.code_issued_at))}${r.phone ? ' · ' + esc(r.phone) : ''}</div></div>
+          <div class="acts">${r.phone ? `<a class="button" href="${esc(root.Messages.smsHref(r.phone, linkMessage(r.display_name, r.role)))}" title="주소 안내 문자(코드 없음)">주소 문자</a>` : ''}<button data-st="edit" data-id="${r.user_id}">교구·역할·전화</button><button data-st="reissue" data-id="${r.user_id}">코드 다시 발급</button>
           <button data-st="${r.status === 'active' ? 'suspend' : 'resume'}" data-id="${r.user_id}" class="${r.status === 'active' ? 'danger' : ''}">${r.status === 'active' ? '접근 중지' : '다시 허용'}</button></div></div>`).join('')
           : '<p class="muted">아직 등록된 담당자가 없습니다.</p>';
         $$('[data-st]').forEach(b => b.onclick = () => act(b.dataset.st, rows.find(x => x.user_id === b.dataset.id)));
@@ -81,7 +97,7 @@
           if (a === 'edit') return editDialog(ctx, r, async () => { await loadStaff(ctx, true); list(); });
           if (a === 'reissue') {
             if (!await ask('코드 다시 발급', `${r.display_name}님의 지금 코드는 바로 쓸 수 없게 되고, 로그인해 있는 기기도 끊깁니다. 새 코드를 발급할까요?`, '새로 발급')) return;
-            const x = await store.staff({ action: 'reissue', userId: r.user_id }); showCode('코드 다시 발급', r.display_name, x.code);
+            const x = await store.staff({ action: 'reissue', userId: r.user_id }); showCode('코드 다시 발급', r.display_name, x.code, r.role, r.phone);
           } else if (a === 'suspend') {
             if (!await ask('접근 중지', `${r.display_name}님은 지금부터 어떤 기기에서도 자료를 볼 수 없습니다. 기록은 지워지지 않습니다.`, '접근 중지', true)) return;
             await store.staff({ action: 'suspend', userId: r.user_id }); toast('접근을 중지했습니다.');
@@ -105,6 +121,7 @@
       <label>역할<select name="role" id="editRole">${ISSUABLE.map(x => `<option value="${x}" ${x === r.role ? 'selected' : ''}>${ROLE[x]}</option>`).join('')}</select></label>
       <label id="editDistrictWrap">교구<select name="district" id="editDistrict"></select></label>
       <p id="editNote" class="muted small" hidden>새가족팀은 교구 없이 모든 교구의 새가족을 봅니다.</p>
+      <label>휴대전화 <span class="muted small">(코드 문자용)</span><input name="phone" id="editPhone" inputmode="tel" maxlength="20" value="${esc(r.phone || '')}" placeholder="010-0000-0000"></label>
       <p class="notice small">바꾸면 바로 다음 화면부터 새 범위의 자료만 보입니다. 코드는 그대로입니다.</p>
       <div class="acts"><button type="button" class="quiet" id="editCancel">취소</button><button class="primary">바꾸기</button></div></form>`);
     const role = $('#editRole', body), sync = () => { const need = NEEDS_DISTRICT.includes(role.value); $('#editDistrictWrap', body).hidden = !need; $('#editNote', body).hidden = need; $('#editDistrict', body).innerHTML = districtOptions(ctx, role.value, r.district); };
@@ -112,7 +129,7 @@
     $('#editCancel', body).onclick = closeDialog;
     $('#editForm', body).onsubmit = async e => {
       e.preventDefault(); const f = Object.fromEntries(new FormData(e.target));
-      try { await store.staff({ action: 'update', userId: r.user_id, role: f.role, district: NEEDS_DISTRICT.includes(f.role) ? f.district : '' }); closeDialog(); toast('바꾸었습니다.'); await done(); }
+      try { await store.staff({ action: 'update', userId: r.user_id, role: f.role, district: NEEDS_DISTRICT.includes(f.role) ? f.district : '', phone: f.phone || '' }); closeDialog(); toast('바꾸었습니다.'); await done(); }
       catch (err) { toast(err.message); }
     };
   }

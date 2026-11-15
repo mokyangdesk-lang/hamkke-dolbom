@@ -151,7 +151,7 @@
   }
 
   const staff = body => request('/functions/v1/staff-gateway', { method: 'POST', body: JSON.stringify({ churchId: server().churchId, ...body }) });
-  const staffList = () => request('/rest/v1/staff_accounts?church_id=eq.' + encodeURIComponent(server().churchId) + '&select=user_id,display_name,role,district,status,code_issued_at&order=created_at.desc');
+  const staffList = () => request('/rest/v1/staff_accounts?church_id=eq.' + encodeURIComponent(server().churchId) + '&select=user_id,display_name,role,district,status,code_issued_at,phone&order=created_at.desc');
   const auditLog = () => request('/rest/v1/staff_audit?church_id=eq.' + encodeURIComponent(server().churchId) + '&select=at,action,target&order=at.desc&limit=30');
 
   const status = () => ({
