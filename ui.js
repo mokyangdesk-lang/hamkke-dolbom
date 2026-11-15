@@ -7,7 +7,7 @@
   const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const ROLE = { admin: '전체 관리자', newcomer_pastor: '새가족 담당 목사', newcomer_admin: '새가족 관리자', district_pastor: '교구 목사', committee: '새가족위원', visitor: '심방사역자' };
   const MINISTRY = { admin: ['관리', 'admin'], newcomer_pastor: ['새가족', 'new'], newcomer_admin: ['새가족', 'new'], district_pastor: ['심방', 'visit'], committee: ['새가족', 'new'], visitor: ['심방', 'visit'] };
-  const CREDIT = 'AI 목양지원센터 / 이세진 목사 · 이세진 목사 개인 사역, 할렐루야교회 공식 기관 아님 · mokyangdesk.com';
+  const CREDIT = 'AI 목양지원센터 · mokyangdesk.com';
 
   function toast(message) {
     const t = $('#toast'); if (!t) return;

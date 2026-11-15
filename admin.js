@@ -309,5 +309,39 @@
     },
   };
 
+  // ── 7. 화면 테마 (전체 관리자): 색·글꼴·글자 크기. 교회의 모든 사용자에게 같이 적용됩니다.
+  let themeDraft = null;
+  Pages.theme = {
+    label: '화면·테마',
+    render(ctx) {
+      const T = root.HamkkeTheme, saved = T.fromState(ctx.state), d = themeDraft || saved;
+      const changed = JSON.stringify(d) !== JSON.stringify(saved);
+      return `<div class="eyebrow">관리</div><h1 class="page-title">화면 · 테마</h1>
+      <p class="subtitle">교회의 모든 사용자 화면에 같이 적용됩니다. 고르면 바로 미리 보이고, "저장"을 눌러야 모두에게 적용됩니다.</p>
+      <section class="card"><h2>색</h2><div class="swatches">${Object.entries(T.PALETTES).map(([k, p]) => `<button type="button" class="swatch ${d.palette === k ? 'on' : ''}" data-palette="${k}" aria-pressed="${d.palette === k}">
+        <span class="chipset"><i style="background:${p.light}"></i><i style="background:color-mix(in oklab, ${p.light} 22%, #fff)"></i><i style="background:${p.dark}"></i></span><b>${esc(p.name)}</b></button>`).join('')}</div></section>
+      <section class="card"><h2>글꼴</h2><div class="fontlist">${Object.entries(T.FONTS).map(([k, f]) => `<button type="button" class="fontopt ${d.font === k ? 'on' : ''}" data-font="${k}" aria-pressed="${d.font === k}">
+        <span class="sample" style="font-family:${f.family ? f.family + ',' : ''} system-ui">함께 돌봄 가나다 123</span><span class="muted small">${esc(f.name)} · ${esc(f.note)}</span></button>`).join('')}</div>
+        <p class="muted small">웹 글꼴은 처음 한 번 인터넷에서 받아 옵니다. 받지 못하면 기기 기본 글꼴로 보입니다.</p></section>
+      <section class="card"><h2>글자 크기</h2><div class="seg" role="group" aria-label="글자 크기">${Object.entries(T.SIZES).map(([k, s]) => `<button type="button" data-size="${k}" class="${d.size === k ? 'active' : ''}">${esc(s.name)}</button>`).join('')}</div>
+        <p class="muted small">어르신 사역자가 많으면 "크게" 이상을 권합니다. 각 기기의 확대 기능도 함께 쓸 수 있습니다.</p></section>
+      <section class="card"><h2>미리 보기</h2><div class="preview-card"><div class="eyebrow">심방</div><h3 style="margin:4px 0 10px">오늘 할 일</h3>
+        <div class="row"><div class="grow"><b>가상김성도</b> <span class="chip">내 담당</span> <span class="chip warn">오늘 생일</span><div class="muted small">최근 연락: 시험심방 · 3일 전 · 통화 완료</div></div><div class="acts"><button type="button">문자</button><button type="button" class="primary">기록</button></div></div></div>
+        <div class="acts" style="margin-top:16px"><button type="button" id="themeReset" class="quiet" ${changed ? '' : 'disabled'}>되돌리기</button><button type="button" id="themeSave" class="primary" ${changed ? '' : 'disabled'}>모두에게 적용(저장)</button></div></section>`;
+    },
+    bind(ctx) {
+      const T = root.HamkkeTheme, saved = T.fromState(ctx.state);
+      const pick = patch => { themeDraft = T.normalize({ ...(themeDraft || saved), ...patch }); T.apply(themeDraft, false); ctx.render(); };
+      $$('[data-palette]').forEach(b => b.onclick = () => pick({ palette: b.dataset.palette }));
+      $$('[data-font]').forEach(b => b.onclick = () => pick({ font: b.dataset.font }));
+      $$('[data-size]').forEach(b => b.onclick = () => pick({ size: b.dataset.size }));
+      $('#themeReset').onclick = () => { themeDraft = null; T.apply(saved); ctx.render(); };
+      $('#themeSave').onclick = async () => {
+        const t = themeDraft;
+        if (await ctx.commit(s => { const r = s.settings.find(x => x.id === 'theme'); if (r) Object.assign(r, t); else s.settings.push({ id: 'theme', ...t }); }, '테마를 저장했습니다. 다른 기기는 새로고침하면 바뀝니다.')) { themeDraft = null; T.apply(t); }
+      };
+    },
+  };
+
   root.HamkkeAdmin = { showCode, downloadTemplate, uid };
 })(window);

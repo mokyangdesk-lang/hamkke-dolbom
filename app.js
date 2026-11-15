@@ -8,7 +8,7 @@
 
   // 역할별 메뉴(순서대로). 각 화면은 Pages에 등록됩니다(admin.js 등).
   const NAV = {
-    admin: ['staff', 'groups', 'imports', 'board', 'matching', 'assign', 'templates'],
+    admin: ['staff', 'groups', 'imports', 'board', 'matching', 'assign', 'templates', 'theme'],
     newcomer_admin: ['board', 'attendance', 'matching', 'imports'],
     newcomer_pastor: ['board', 'attendance', 'nreports', 'message'],
     district_pastor: ['today', 'people', 'message', 'reports', 'handover', 'assign'],
@@ -30,7 +30,7 @@
   }
   async function refresh(quiet) {
     if (loading) return; loading = true; setStatus('불러오는 중…');
-    try { state = await store.load(); cache = {}; if (!quiet) toast('서버의 최신 자료를 불러왔습니다.'); }
+    try { state = await store.load(); cache = {}; root.HamkkeTheme?.apply(root.HamkkeTheme.fromState(state)); if (!quiet) toast('서버의 최신 자료를 불러왔습니다.'); }
     catch (e) { toast(e.message); }
     finally { loading = false; if (me().signedIn) render(); }
   }
@@ -40,6 +40,8 @@
     const s = me(), sv = store.server();
     return `<main class="login" id="main"><div class="login-card">
       <div class="brand-mark" aria-hidden="true">✦</div><h1>함께 돌봄</h1><p class="muted">심방 · 새가족 사역자의 수첩</p>
+      <div class="who-login" aria-label="이 화면에서 로그인하는 분"><span>심방사역자</span><span>새가족위원</span><span>교구 목사</span><span>새가족팀</span></div>
+      <p class="muted small">모두 이 화면에서 로그인합니다. 받은 코드에 맞는 화면(심방 또는 새가족)이 자동으로 열립니다.</p>
       ${message ? `<p class="notice" role="alert">${esc(message)}</p>` : ''}
       ${s.hasServer ? '' : '<p class="notice">서버 정보가 아직 없습니다. 아래 "서버 정보 입력"을 관리자에게 받아 한 번 입력해 주세요.</p>'}
       <form id="codeLogin" class="stack">
@@ -58,7 +60,7 @@
         <label for="srvKey">공개 키</label><input id="srvKey" name="key" autocomplete="off" value="${esc(sv.key || '')}" required>
         <label for="srvChurch">교회 ID</label><input id="srvChurch" name="churchId" autocomplete="off" value="${esc(sv.churchId || '')}" required>
         <button>이 기기에 저장</button></form></details>`}
-    </div><p class="credit">${esc(CREDIT)}</p></main>`;
+    </div><p class="guide-link"><a href="guide/">처음이신가요? 사용 안내 보기</a></p><p class="credit">${esc(CREDIT)}</p></main>`;
   }
   function bindLogin() {
     const code = $('#loginCode');
@@ -81,6 +83,7 @@
   async function enter() {
     $('#app').innerHTML = '<main class="login"><p class="muted">불러오는 중…</p></main>';
     try { state = await store.load(); } catch (e) { return renderLogin(e.message); }
+    root.HamkkeTheme?.apply(root.HamkkeTheme.fromState(state)); // 교회 테마(관리자가 정함)
     const nav = NAV[me().role];
     if (!nav) { await store.signOut(); return renderLogin('알 수 없는 역할입니다. 관리자에게 문의해 주세요.'); }
     page = nav[0]; render();
@@ -94,7 +97,7 @@
     const P = Pages[page];
     return `<header class="top"><div class="brand"><span class="brand-mark sm" aria-hidden="true">✦</span><span>함께 돌봄</span><span class="ministry-tag">${esc(ministry)}</span></div>
       <div class="who"><b>${esc(m.name || '')}</b> <span class="muted">${esc(ROLE[m.role])}${m.district ? ' · ' + esc(m.district) : ''}</span></div>
-      <div class="top-acts"><span id="syncState" class="muted small" role="status">서버와 연결됨</span><button id="alertsBtn" class="${page === 'alerts' ? 'primary' : 'quiet'}" aria-label="알림 ${alerts}건">알림${alerts ? ` <span class="badge">${alerts}</span>` : ''}</button><button id="refreshBtn" class="quiet" title="다른 기기에서 바꾼 내용을 불러옵니다">새로고침</button><button id="logoutBtn" class="quiet">로그아웃</button></div></header>
+      <div class="top-acts"><span id="syncState" class="muted small" role="status">서버와 연결됨</span><button id="alertsBtn" class="${page === 'alerts' ? 'primary' : 'quiet'}" aria-label="알림 ${alerts}건">알림${alerts ? ` <span class="badge">${alerts}</span>` : ''}</button><button id="refreshBtn" class="quiet" title="다른 기기에서 바꾼 내용을 불러옵니다" aria-label="새로고침"><span aria-hidden="true">↻</span><span class="lbl">새로고침</span></button><button id="logoutBtn" class="quiet">로그아웃</button></div></header>
       ${nav.length > 1 ? `<nav class="tabs" aria-label="메뉴">${nav.map(id => `<button data-page="${id}" class="${id === page ? 'active' : ''}" ${id === page ? 'aria-current="page"' : ''}>${esc(Pages[id]?.label || id)}</button>`).join('')}</nav>` : ''}
       <main id="main" class="page">${P ? P.render(ctx()) : ''}</main>
       <footer class="credit">${esc(CREDIT)}</footer>`;
@@ -103,6 +106,7 @@
     if (!me().signedIn) return renderLogin();
     document.body.className = 'm-' + MINISTRY[me().role]?.[1];
     $('#app').innerHTML = shellHTML();
+    const top = $('.top'); if (top) document.documentElement.style.setProperty('--top-h', top.offsetHeight + 'px');
     $$('[data-page]').forEach(b => b.onclick = () => go(b.dataset.page));
     $('#refreshBtn').onclick = () => refresh();
     $('#alertsBtn').onclick = () => go('alerts');
