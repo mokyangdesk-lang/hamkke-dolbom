@@ -264,3 +264,28 @@ dialog::backdrop { background: rgb(10 14 12 / .42); backdrop-filter: blur(3px); 
   .who { order: 3; flex-basis: 100%; font-size: .82rem; min-width: 0; }
 }
 @media (max-width: 640px) { .top-acts .lbl { display: none; } #syncState { display: none; } .top-acts button[aria-label="새로고침"] { font-size: 1.15rem; } }
+
+/* 새가족 진행 그림 */
+.name-link { all: unset; cursor: pointer; font-weight: 800; color: var(--ink); border-bottom: 2px solid var(--accent-soft); }
+.name-link:hover, .name-link:focus-visible { color: var(--accent-text); border-bottom-color: var(--accent); }
+.nc-steps { margin-top: 8px; } .nc-steps > summary { cursor: pointer; font-weight: 700; color: var(--ink-2); padding: 4px 0; }
+.stepper { list-style: none; margin: 12px 0 8px; padding: 4px 0 8px; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(84px, 1fr); overflow-x: auto; }
+.stepper li { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; padding: 0 4px; font-size: .85rem; word-break: keep-all; }
+.stepper li::before { content: ""; position: absolute; top: 16px; left: calc(-50% + 18px); right: calc(50% + 18px); height: 3px; border-radius: 2px; background: var(--line); }
+.stepper li:first-child::before { content: none; }
+.stepper li.done::before { background: var(--accent); } .stepper li.now::before, .stepper li.late::before { background: var(--accent-soft); }
+.stepper .node { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; border: 3px solid var(--line-strong); background: var(--surface); color: var(--on-accent); font-weight: 900; flex: none; }
+.stepper li.done .node { background: var(--accent); border-color: var(--accent); }
+.stepper li.now .node { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-softer); }
+.stepper li.late .node { border-color: var(--bad); background: var(--bad-soft); }
+.stepper li.todo .node { border-style: dashed; }
+.stepper b { font-size: .86rem; line-height: 1.25; } .stepper li.todo b { color: var(--ink-3, var(--ink-2)); font-weight: 600; }
+.stepper li.late b, .stepper li.late .sub { color: var(--bad); } .stepper li.now b { color: var(--accent-text); }
+.stepper .sub { color: var(--ink-2); font-size: .8rem; }
+.pips { display: flex; gap: 2px; flex-wrap: nowrap; justify-content: center; }
+.pips i { width: 7px; height: 7px; border-radius: 50%; background: var(--line-strong); } .pips i.on { background: var(--accent); }
+.edu-quick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
+.edu-quick > b { margin-right: 4px; min-width: 70px; }
+.edu-quick button { padding: 6px 12px; min-height: 36px; font-size: .88rem; }
+.edu-quick button.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.edu-quick button.on::before { content: "✓ "; }
