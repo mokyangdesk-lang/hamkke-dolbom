@@ -69,13 +69,13 @@
     const s = ctx.state, st = N.stages(s, p), nx = N.nextStage(st), wk = N.weeksSince(p), notes = N.notesFor(s, p.id).length;
     const status = N.progressOf(s, p.id).status;
     return `<div class="row nc-row"><div class="grow"><button type="button" class="name-link" data-open="${esc(p.id)}">${esc(p.name)}</button> ${TEAM.includes(ctx.me.role) || ctx.me.role === 'district_pastor' ? `<span class="muted small">${esc(p.district)}</span>` : ''}
-        ${wk ? `<span class="chip">${wk}주차</span>` : ''} ${status === 'paused' ? '<span class="chip warn">중단</span>' : ''} ${st.some(x => x.overdue) ? '<span class="chip warn">늦어짐</span>' : ''} ${hasReq ? '<span class="chip warn">확인 요청</span>' : ''}
+        ${wk ? `<span class="chip">${wk}주차</span>` : ''} ${status === 'paused' ? '<span class="chip warn">중단</span>' : ''} ${st.some(x => x.overdue) ? '<span class="chip warn">늦어짐</span>' : ''} ${hasReq ? '<span class="chip warn">확인 요청</span>' : ''} ${notes ? `<span class="chip">메모 ${notes}</span>` : ''}
         ${dots(st)}<div class="muted small">다음: <b>${esc(nx ? nx.label : '교구 인계 대기')}</b>${nx?.detail ? ' · ' + esc(nx.detail) : ''}${nx ? ' · ' + esc(nx.who) : ''}</div>
         <details class="nc-steps"><summary>전체 진행 과정 · ${st.filter(x => x.done).length}/${st.length} 단계</summary>${stepper(s, p, st)}</details></div>
-      <div class="acts">${p.phone ? `<a class="button" href="${M.telHref(p.phone)}">전화</a><button data-nsms="${esc(p.id)}">문자</button>` : ''}
+      <div class="acts">${nx?.manual && canProgress(ctx.me) && status !== 'paused' ? `<button class="primary" data-next="${esc(p.id)}" data-key="${nx.key}">${esc(nx.label)} 완료</button>` : ''}
+        ${p.phone ? `<a class="button" href="${M.telHref(p.phone)}">전화</a><button data-nsms="${esc(p.id)}">문자</button>` : '<button type="button" disabled title="전화번호 없음">전화</button><button type="button" disabled title="전화번호 없음">문자</button>'}
         <button data-nrec="${esc(p.id)}">기록</button>
-        ${nx?.manual && canProgress(ctx.me) && status !== 'paused' ? `<button class="primary" data-next="${esc(p.id)}" data-key="${nx.key}">${esc(nx.label)} 완료</button>` : ''}
-        <button class="${nx?.manual && canProgress(ctx.me) ? '' : 'primary'}" data-open="${esc(p.id)}">자세히${notes ? ` · 메모 ${notes}` : ''}</button></div></div>`;
+        <button data-open="${esc(p.id)}">자세히</button></div></div>`;
   }
   function bindRows(ctx) {
     $$('[data-open]').forEach(b => b.onclick = () => detail(ctx, b.dataset.open));

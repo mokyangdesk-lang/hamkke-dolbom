@@ -88,7 +88,7 @@
         const filter = $('#staffFilter').value, rows = (ctx.cache.staff || []).filter(r => !filter || (filter === 'new' ? !r.district : r.district === filter));
         $('#staffList').innerHTML = rows.length ? rows.map(r => `<div class="row"><div class="grow"><b>${esc(r.display_name)}</b> <span class="chip ${r.status === 'active' ? 'ok' : 'warn'}">${r.status === 'active' ? '사용 중' : '접근 중지'}</span>
           <div class="muted small">${esc(ROLE[r.role] || r.role)} · ${esc(r.district || '모든 교구 새가족')} · 코드 발급 ${esc(date(r.code_issued_at))}${r.phone ? ' · ' + esc(r.phone) : ''}</div></div>
-          <div class="acts">${r.phone ? `<a class="button" href="${esc(root.Messages.smsHref(r.phone, linkMessage(r.display_name, r.role)))}" title="주소 안내 문자(코드 없음)">주소 문자</a>` : ''}<button data-st="edit" data-id="${r.user_id}">교구·역할·전화</button><button data-st="reissue" data-id="${r.user_id}">코드 다시 발급</button>
+          <div class="acts">${r.phone ? `<a class="button" href="${esc(root.Messages.smsHref(r.phone, linkMessage(r.display_name, r.role)))}" title="주소 안내 문자(코드 없음)">주소 문자</a>` : '<button type="button" disabled title="전화번호가 없어 문자를 보낼 수 없습니다">주소 문자</button>'}<button data-st="edit" data-id="${r.user_id}">교구·역할·전화</button><button data-st="reissue" data-id="${r.user_id}">코드 다시 발급</button>
           <button data-st="${r.status === 'active' ? 'suspend' : 'resume'}" data-id="${r.user_id}" class="${r.status === 'active' ? 'danger' : ''}">${r.status === 'active' ? '접근 중지' : '다시 허용'}</button></div></div>`).join('')
           : '<p class="muted">아직 등록된 담당자가 없습니다.</p>';
         $$('[data-st]').forEach(b => b.onclick = () => act(b.dataset.st, rows.find(x => x.user_id === b.dataset.id)));

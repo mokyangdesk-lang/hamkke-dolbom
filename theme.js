@@ -22,7 +22,7 @@
     system: { name: '기기 기본 글꼴', note: '인터넷 없이도 같음', css: '', family: '' },
   };
   const MODES = { light: '밝게', dark: '어둡게', auto: '기기 설정 따라' };
-  const SIZES = { s: { name: '보통', px: 16 }, m: { name: '크게', px: 17.5 }, l: { name: '아주 크게', px: 19.5 } };
+  const SIZES = { xxs: { name: '아주 작게', px: 14 }, xs: { name: '작게', px: 15 }, s: { name: '보통', px: 16 }, m: { name: '크게', px: 17.5 }, l: { name: '아주 크게', px: 19.5 } };
   const DEFAULT = { palette: 'pine', font: 'pretendard', size: 'm', mode: 'light' };
   const FALLBACK = '"Apple SD Gothic Neo", "Malgun Gothic", system-ui, -apple-system, "Segoe UI", sans-serif';
   const KEY = 'hamkke.theme.v1';

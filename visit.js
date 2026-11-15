@@ -17,7 +17,7 @@
   function personRow(ctx, p, extra = '') {
     return `<div class="row person"><div class="grow"><b>${esc(p.name)}</b> ${isMine(ctx.me, p) ? '<span class="chip">내 담당</span>' : ''}${extra}
       <div class="muted small">최근 연락: ${lastLine(ctx.state, p)}</div></div>
-      <div class="acts">${p.phone ? `<a class="button" href="${M.telHref(p.phone)}">전화</a><button data-sms="${esc(p.id)}">문자</button>` : '<span class="muted small">전화번호 없음</span>'}<button class="primary" data-rec="${esc(p.id)}">기록</button></div></div>`;
+      <div class="acts">${p.phone ? `<a class="button" href="${M.telHref(p.phone)}">전화</a><button data-sms="${esc(p.id)}">문자</button>` : '<button type="button" disabled title="전화번호 없음">전화</button><button type="button" disabled title="전화번호 없음">문자</button>'}<button class="primary" data-rec="${esc(p.id)}">기록</button></div></div>`;
   }
   function bindRows(ctx) {
     $$('[data-rec]').forEach(b => b.onclick = () => visitForm(ctx, b.dataset.rec));
