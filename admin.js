@@ -263,38 +263,34 @@
     },
   };
 
-  // ── 5. 심방 배정 (교구 목사: 자기 교구 / 전체 관리자: 교구 골라서)
-  let assignDistrict = '', onlyUnassigned = false;
+  // ── 5. 심방사역자 관리 (교구 목사: 자기 교구 / 전체 관리자: 교구 골라서)
+  // 성도는 엑셀의 "교구" 칸으로 교구에 들어가고, 그 교구의 심방사역자 모두가 같은 명단을 봅니다(사람별 배정 없음).
+  let assignDistrict = '';
   Pages.assign = {
-    label: '심방 배정',
+    label: '심방사역자 관리',
     render(ctx) {
       const isAdmin = ctx.me.role === 'admin', g = C.groups(ctx.state).filter(x => x.visitors);
       const district = isAdmin ? (assignDistrict || g[0]?.name || '') : ctx.me.district;
-      const people = ctx.state.people.filter(p => !p.newcomer && p.district === district).sort((a, b) => String(a.name).localeCompare(b.name, 'ko'));
-      const visitors = (ctx.cache.staff || []).filter(s => s.role === 'visitor' && s.district === district && s.status === 'active');
-      const vname = id => (ctx.cache.staff || []).find(s => s.user_id === id)?.display_name;
-      const shown = onlyUnassigned ? people.filter(p => !vname(p.visitorId)) : people;
-      const unassigned = people.filter(p => !vname(p.visitorId)).length;
-      const noVisitors = !isAdmin && !C.groups(ctx.state).find(x => x.name === district)?.visitors;
-      return `<div class="eyebrow">심방</div><h1 class="page-title">심방 배정</h1>
-      <ol class="flow"><li>성도 고르기</li><li>심방사역자 고르기</li><li>배정</li></ol>
-      <p class="subtitle">같은 교구 심방사역자는 서로의 명단을 함께 봅니다. 배정은 "주 담당"을 정하는 것입니다.</p>
-      ${noVisitors ? '<p class="notice">이 교구에는 심방사역자가 없습니다. 목사님이 직접 돌보시는 교구입니다.</p>' : ''}
+      const people = ctx.state.people.filter(p => !p.newcomer && p.district === district);
+      const ids = new Set(people.map(p => p.id));
+      const visitors = (ctx.cache.staff || []).filter(s => s.role === 'visitor' && s.district === district);
+      const K = root.CareCore, since = C.iso(new Date(Date.now() - 7 * 86400000));
+      const visits = ctx.state.visits.filter(v => ids.has(v.personId));
+      const long = K ? K.longNoContact({ ...ctx.state, people }).length : 0;
+      const noVisitors = !C.groups(ctx.state).find(x => x.name === district)?.visitors;
+      const rows = visitors.map(v => { const mine = visits.filter(x => x.authorId === v.user_id), last = mine.map(x => x.date).sort().pop();
+        return `<tr><td><b>${esc(v.display_name)}</b> ${v.status === 'active' ? '' : '<span class="chip warn">접근 중지</span>'}</td><td>${esc(v.phone || '-')}</td><td>${mine.filter(x => x.date >= since).length}회</td><td>${esc(last || '기록 없음')}</td></tr>`; }).join('');
+      return `<div class="eyebrow">심방</div><h1 class="page-title">심방사역자 관리</h1>
+      <p class="subtitle">성도는 엑셀 명단의 "교구" 칸에 따라 교구별로 자동으로 나뉩니다. 이 교구의 심방사역자는 모두 같은 교구 명단을 함께 보고 연락합니다.</p>
       ${isAdmin ? `<label class="inline">교구<select id="assignDistrict">${g.map(x => `<option ${x.name === district ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>` : ''}
-      <div class="stats"><div class="stat"><b>${people.length}</b>${esc(district)} 성도</div><div class="stat ${unassigned ? 'warn' : ''}"><b>${unassigned}</b>미배정</div><div class="stat"><b>${visitors.length}</b>심방사역자</div></div>
-      <section class="card"><div class="between"><label class="check inline"><input type="checkbox" id="onlyUn" ${onlyUnassigned ? 'checked' : ''}> 미배정만 보기</label>
-        <div class="acts"><select id="assignTo" style="max-width:220px">${visitors.length ? visitors.map(v => `<option value="${v.user_id}">${esc(v.display_name)}</option>`).join('') : '<option value="">심방사역자 없음</option>'}</select><button type="button" id="doAssign" class="primary" ${visitors.length ? '' : 'disabled'}>선택한 분 배정</button></div></div>
-        ${shown.length ? `<div class="list">${shown.map(p => `<label class="row pick"><input type="checkbox" name="who" value="${esc(p.id)}"><span class="grow"><b>${esc(p.name)}</b><span class="muted small"> · 주 담당 ${esc(vname(p.visitorId) || '미배정')}</span></span></label>`).join('')}</div>`
-          : `<p class="muted">${people.length ? '모두 배정되었습니다.' : '이 교구의 성도 명단이 아직 없습니다. 전체 관리자가 성도명단을 올리면 나타납니다.'}</p>`}</section>`;
+      ${noVisitors ? '<p class="notice">이 교구에는 심방사역자가 없습니다. 목사님이 직접 돌보시는 교구입니다.</p>' : ''}
+      <div class="stats"><div class="stat"><b>${people.length}</b>${esc(district)} 성도</div><div class="stat"><b>${visitors.filter(v => v.status === 'active').length}</b>심방사역자</div><div class="stat"><b>${visits.filter(v => v.date >= since).length}</b>최근 7일 연락</div><div class="stat ${long ? 'warn' : ''}"><b>${long}</b>오래 연락 못 한 분</div></div>
+      <section class="card"><h2>심방사역자별 활동</h2>${visitors.length ? `<div class="table-wrap"><table><thead><tr><th>심방사역자</th><th>휴대전화</th><th>최근 7일 연락</th><th>마지막 기록</th></tr></thead><tbody>${rows}</tbody></table></div>`
+        : '<p class="muted">이 교구에 등록된 심방사역자가 없습니다. 전체 관리자가 "담당자" 메뉴에서 등록합니다.</p>'}
+        <p class="muted small">${people.length ? '' : '이 교구의 성도 명단이 아직 없습니다. 전체 관리자가 "명단 올리기"로 성도명단을 올리면 교구 칸에 따라 여기에 들어옵니다.'}</p></section>`;
     },
     async bind(ctx) {
       const d = $('#assignDistrict'); if (d) d.onchange = () => { assignDistrict = d.value; ctx.render(); };
-      $('#onlyUn').onchange = e => { onlyUnassigned = e.target.checked; ctx.render(); };
-      $('#doAssign').onclick = () => {
-        const ids = $$('input[name=who]:checked').map(x => x.value), to = $('#assignTo').value;
-        if (!ids.length) return toast('배정할 성도를 골라 주세요.');
-        ctx.commit(s => { for (const p of s.people) if (ids.includes(p.id)) p.visitorId = to; }, `${ids.length}명을 배정했습니다.`);
-      };
       if (!ctx.cache.staff) { await loadStaff(ctx); ctx.render(); }
     },
   };
@@ -362,6 +358,76 @@
       $('#themeSave').onclick = async () => {
         const t = themeDraft;
         if (await ctx.commit(s => { const r = s.settings.find(x => x.id === 'theme'); if (r) Object.assign(r, t); else s.settings.push({ id: 'theme', ...t }); }, '테마를 저장했습니다. 다른 기기는 새로고침하면 바뀝니다.')) { themeDraft = null; T.apply(t); }
+      };
+    },
+  };
+
+  // ── 8. 자료 관리 (전체 관리자): 백업 받기, 한 분 지우기, 전체 초기화, 백업에서 다시 넣기
+  const RELATED = ['visits', 'education', 'progress', 'notes'];
+  function saveFile(name, type, data) {
+    const url = URL.createObjectURL(new Blob([data], { type })), a = document.createElement('a');
+    a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 3000);
+  }
+  function backupJSON(state) {
+    const records = [];
+    for (const kind of C.KINDS) for (const p of state[kind] || []) records.push({ kind, id: p.id, payload: p });
+    saveFile(`함께돌봄-백업-${C.iso()}.json`, 'application/json', JSON.stringify({ app: 'hamkke-dolbom', version: 5, savedAt: new Date().toISOString(), records }, null, 1));
+    return records.length;
+  }
+  function backupExcel(state) {
+    const X = root.XLSX, book = X.utils.book_new(), cal = c => c === 'lunar' ? '음력' : c ? '양력' : '';
+    X.utils.book_append_sheet(book, X.utils.json_to_sheet(state.people.filter(p => !p.newcomer).map(p => ({ 성도ID: p.id, 이름: p.name, 휴대전화: p.phone || '', 교구: p.district || '', 생년월일: p.birthDate || '', 생일기준: cal(p.birthCalendar), 올해생일: p.birthdayThisYear || '', 비고: p.notes || '' }))), '성도명단');
+    X.utils.book_append_sheet(book, X.utils.json_to_sheet(state.people.filter(p => p.newcomer).map(p => ({ 새가족ID: p.id, 이름: p.name, 휴대전화: p.phone || '', 교구: p.district || '', 생년월일: p.birthDate || '', 생일기준: cal(p.birthCalendar), 올해생일: p.birthdayThisYear || '', 등록일: p.registeredAt || '', 양육도우미ID: p.mentorId || '', 비고: p.notes || '' }))), '새가족명단');
+    X.utils.book_append_sheet(book, X.utils.json_to_sheet(state.mentors.map(m => ({ 양육도우미ID: m.id, 이름: m.name, 휴대전화: m.phone || '', 교구: m.district, 양육교육이수: m.trained ? '이수' : '미이수', 활동상태: m.active ? '활동중' : '활동중지', 배정가능인원: m.capacity ?? '' }))), '양육도우미명단');
+    X.writeFile(book, `함께돌봄-명단-${C.iso()}.xlsx`);
+  }
+  let dataSearch = '', restoreFile = null;
+  Pages.data = {
+    label: '자료 관리',
+    render(ctx) {
+      const s = ctx.state, n = k => (s[k] || []).length;
+      const found = dataSearch ? s.people.filter(p => [p.name, p.phone, p.id].some(v => String(v || '').includes(dataSearch))).slice(0, 20) : [];
+      return `<div class="eyebrow">관리</div><h1 class="page-title">자료 관리</h1>
+      <p class="subtitle">서버에 있는 교회 자료를 내려받거나 정리합니다. 지우는 일은 되돌릴 수 없으니, 먼저 백업을 받아 두세요.</p>
+      <div class="stats"><div class="stat"><b>${s.people.filter(p => !p.newcomer).length}</b>성도</div><div class="stat"><b>${s.people.filter(p => p.newcomer).length}</b>새가족</div><div class="stat"><b>${n('mentors')}</b>양육도우미</div><div class="stat"><b>${n('visits')}</b>연락 기록</div><div class="stat"><b>${n('reports')}</b>보고서</div></div>
+      <section class="card"><h2>백업 받기</h2><p class="muted small">백업 파일에는 성도 개인정보가 들어 있습니다. 교회 관리용 컴퓨터에만 보관하고, 메신저나 메일로 돌리지 마세요.</p>
+        <div class="acts"><button type="button" id="bkJson" class="primary">전체 백업(JSON) 받기</button><button type="button" id="bkXlsx">명단 엑셀로 받기</button></div>
+        <p class="muted small">엑셀은 "명단 올리기" 양식과 같아 그대로 다시 올릴 수 있습니다. 연락 기록·교육·보고서까지 모두 보관하려면 JSON 백업을 받으세요.</p></section>
+      <section class="card"><h2>한 분 지우기</h2><p class="muted small">그분의 연락 기록·교육·새가족 진행·소통 메모도 함께 지워집니다. 이미 승인된 주간 보고서는 기록으로 남습니다.</p>
+        <div class="filters"><input id="dataSearch" placeholder="이름 · 전화번호 · ID로 찾기" value="${esc(dataSearch)}" aria-label="지울 분 찾기"></div>
+        ${found.length ? `<div class="list">${found.map(p => `<div class="row"><div class="grow"><b>${esc(p.name)}</b> <span class="muted small">${esc(p.district || '')} · ${p.newcomer ? '새가족' : '성도'} · ${esc(p.id)}</span></div><button type="button" class="danger" data-del="${esc(p.id)}">지우기</button></div>`).join('')}</div>` : dataSearch ? '<p class="muted">찾는 분이 없습니다.</p>' : ''}</section>
+      <section class="card"><h2>전체 초기화</h2><p class="muted small">성도·새가족·양육도우미·연락 기록·교육·보고서·메모를 모두 지웁니다. 교구 설정·문자 예문·테마는 남습니다. 담당자 계정은 "담당자" 메뉴에서 따로 접근 중지해 주세요. 누르면 먼저 전체 백업 파일이 내려받아집니다.</p>
+        <div class="acts"><input id="resetWord" placeholder="초기화 라고 입력" style="max-width:220px" aria-label="확인 글자"><button type="button" id="doReset" class="danger-fill">전체 초기화</button></div></section>
+      <section class="card"><h2>백업에서 다시 넣기</h2><p class="muted small">JSON 백업 파일을 고르면, 지금 서버에 <b>없는</b> 기록만 다시 넣습니다. 이미 있는 기록은 덮어쓰지 않습니다.</p>
+        <div class="acts"><label class="button">백업 파일 고르기<input id="restoreInput" type="file" accept=".json,application/json" class="visually-hidden"></label>
+        ${restoreFile ? `<span>${esc(restoreFile.name)} · ${restoreFile.records.length}건 (새로 넣을 것 ${restoreFile.records.filter(r => !(s[r.kind] || []).some(x => x.id === r.id)).length}건)</span><button type="button" id="doRestore" class="primary">다시 넣기</button>` : ''}</div></section>`;
+    },
+    bind(ctx) {
+      $('#bkJson').onclick = () => { const n = backupJSON(ctx.state); toast(`${n}건을 백업 파일로 받았습니다.`); };
+      $('#bkXlsx').onclick = () => { try { backupExcel(ctx.state); } catch (e) { toast('엑셀을 만들지 못했습니다: ' + e.message); } };
+      const q = $('#dataSearch'); q.onchange = () => { dataSearch = q.value.trim(); ctx.render(); };
+      $$('[data-del]').forEach(b => b.onclick = async () => {
+        const s = ctx.state, p = s.people.find(x => x.id === b.dataset.del);
+        const rel = RELATED.flatMap(k => (s[k] || []).filter(r => r.personId === p.id || (k === 'progress' && r.id === p.id)).map(r => ({ kind: k, id: r.id })));
+        if (!await ask('한 분 지우기', `${p.name}님(${p.district || '교구 없음'})과 관련 기록 ${rel.length}건을 지웁니다. 되돌릴 수 없습니다.`, '지우기', true)) return;
+        try { await store.remove([...rel, { kind: 'people', id: p.id }]); toast(`${p.name}님을 지웠습니다.`); dataSearch = ''; await ctx.refresh(true); } catch (e) { toast(e.message); }
+      });
+      $('#doReset').onclick = async () => {
+        if ($('#resetWord').value.trim() !== '초기화') return toast('확인을 위해 칸에 "초기화"라고 입력해 주세요.');
+        const s = ctx.state, items = ['people', 'progress', 'education', 'visits', 'notes', 'reports', 'mentors'].flatMap(k => (s[k] || []).map(r => ({ kind: k, id: r.id })));
+        if (!items.length) return toast('지울 자료가 없습니다.');
+        if (!await ask('전체 초기화', `기록 ${items.length}건을 모두 지웁니다. 먼저 전체 백업 파일을 내려받습니다. 되돌리려면 그 파일로 "백업에서 다시 넣기"를 하세요.`, '백업 받고 초기화', true)) return;
+        backupJSON(s);
+        try { const n = await store.remove(items); toast(`${n}건을 지웠습니다. 백업 파일을 잘 보관해 주세요.`); await ctx.refresh(true); } catch (e) { toast('일부만 지워졌을 수 있습니다: ' + e.message); await ctx.refresh(true); }
+      };
+      $('#restoreInput').onchange = async e => {
+        const f = e.target.files[0]; if (!f) return;
+        try { const j = JSON.parse(await f.text()); if (j.app !== 'hamkke-dolbom' || !Array.isArray(j.records)) throw Error('함께 돌봄 백업 파일이 아닙니다.'); restoreFile = { name: f.name, records: j.records }; ctx.render(); }
+        catch (err) { toast(err.message.includes('JSON') ? '파일을 읽지 못했습니다.' : err.message); }
+      };
+      const r = $('#doRestore'); if (r) r.onclick = async () => {
+        if (!await ask('백업에서 다시 넣기', '지금 서버에 없는 기록만 다시 넣습니다. 이미 있는 기록은 그대로 둡니다.', '다시 넣기')) return;
+        try { const n = await store.restore(restoreFile.records); restoreFile = null; toast(`${n}건을 다시 넣었습니다.`); await ctx.refresh(true); } catch (e) { toast(e.message); }
       };
     },
   };

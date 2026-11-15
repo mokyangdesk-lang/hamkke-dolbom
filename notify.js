@@ -18,10 +18,10 @@
   };
   const typesFor = role => Object.keys(TYPES).filter(k => TYPES[k].roles.includes(role));
 
-  // 범위: 서버가 이미 권한 범위의 자료만 보내 줍니다. 심방사역자는 그중 "내 담당"만 셉니다(오늘 할 일과 같음).
+  // 범위: 서버가 이미 권한 범위(같은 교구)의 자료만 보내 줍니다. 심방은 교구 전체를 셉니다(오늘 할 일과 같음).
   function compute(state, me, at = K.now()) {
     const today = C.iso(at), tomorrow = C.iso(new Date(at.getTime() + 86400000));
-    const mine = p => me.role !== 'visitor' || p.visitorId === me.userId;
+    const mine = () => true; // 심방은 교구 전체(같은 교구 사역자가 함께 봄)
     const care = K.carePeople(state).filter(mine);
     const nextOf = p => K.lastVisit(state, p.id)?.nextDate;
     const out = {};

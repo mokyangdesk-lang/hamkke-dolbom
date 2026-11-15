@@ -14,7 +14,17 @@
     const g = (state.settings || []).find(x => x.id === 'groups');
     return (g?.districts || []).map(x => typeof x === 'string' ? { name: x, visitors: true } : { name: String(x.name), visitors: x.visitors !== false });
   }
-  const DEFAULT_GROUPS = [...Array.from({ length: 8 }, (_, i) => ({ name: (i + 1) + '교구', visitors: true })), { name: '청장년교구', visitors: false }];
+  // 엑셀의 교구 표기를 등록된 교구 이름으로 맞춥니다: "3", "3 교구", "제3교구", "03교구" → "3교구". 청장년 → "청장년교구".
+  function matchDistrict(raw, known) {
+    const v = String(raw || '').trim();
+    if (!v || !known.length || known.includes(v)) return v;
+    const squash = s => String(s).replace(/\s+/g, '').replace(/^제/, '');
+    const num = squash(v).match(/^0*(\d+)(교구)?$/);
+    if (num) { const hit = known.find(k => squash(k).replace(/^0*/, '') === num[1] + '교구'); if (hit) return hit; }
+    const hit = known.find(k => squash(k) === squash(v) || squash(k) === squash(v) + '교구');
+    return hit || v;
+  }
+  const DEFAULT_GROUPS =[...Array.from({ length: 8 }, (_, i) => ({ name: (i + 1) + '교구', visitors: true })), { name: '청장년교구', visitors: false }];
 
   function completed(state, id, course) {
     const max = course === 'welcome' ? 4 : course === 'fellowship' ? 8 : 0;
@@ -82,6 +92,7 @@
         seen.add(item.id);
         const list = state[def.kind], existing = list.find(x => x.id === item.id);
         if (!item.name && !existing) { errors.push(label + ': 이름이 필요합니다.'); continue; }
+        if (item.district) item.district = matchDistrict(item.district, known);
         const district = item.district ?? existing?.district;
         if (!district) errors.push(label + ': 교구가 필요합니다.');
         else if (known.length && !known.includes(district)) errors.push(label + `: '${district}'는 등록된 교구 이름이 아닙니다.`);
@@ -138,6 +149,6 @@
     return state;
   }
 
-  root.MinistryCore = { KINDS, empty, iso, validDate, weekStart, groups, DEFAULT_GROUPS, completed, welcomeCompleted, mentorLoad, mentorCandidates, waitingForMatch, upsertEducation, birthdayDistance, SHEETS, previewImport, applyImport };
+  root.MinistryCore = { KINDS, empty, matchDistrict, iso, validDate, weekStart, groups, DEFAULT_GROUPS, completed, welcomeCompleted, mentorLoad, mentorCandidates, waitingForMatch, upsertEducation, birthdayDistance, SHEETS, previewImport, applyImport };
   if (typeof module !== 'undefined') module.exports = root.MinistryCore;
 })(typeof window !== 'undefined' ? window : globalThis);

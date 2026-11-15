@@ -150,6 +150,28 @@
     } finally { busy = false; }
   }
 
+  // 명시적 삭제(전체 관리자만, 서버가 다시 확인). 보통 저장(save)은 절대 지우지 않습니다.
+  async function remove(items) {
+    if (!baseline) throw Error('먼저 서버 자료를 불러와 주세요.');
+    const changes = items.map(({ kind, id }) => ({ kind, id, delete: true, expected: baseline.get(kind + '/' + id)?.version || 0 })).filter(c => c.expected);
+    for (let i = 0; i < changes.length; i += 4000) {
+      const part = changes.slice(i, i + 4000);
+      await request('/rest/v1/rpc/church_apply', { method: 'POST', body: JSON.stringify({ c: server().churchId, changes: part }) });
+      for (const c of part) baseline.delete(c.kind + '/' + c.id);
+    }
+    return changes.length;
+  }
+  // 백업 파일에서 다시 넣기: 서버에 없는 기록만 새로 만듭니다(있는 기록은 덮어쓰지 않음).
+  async function restore(records) {
+    if (!baseline) throw Error('먼저 서버 자료를 불러와 주세요.');
+    const changes = records.filter(r => KINDS.includes(r.kind) && r.payload?.id === r.id && !baseline.has(r.kind + '/' + r.id)).map(r => ({ kind: r.kind, id: r.id, payload: r.payload, expected: 0 }));
+    for (let i = 0; i < changes.length; i += 4000) {
+      const part = changes.slice(i, i + 4000);
+      const res = await request('/rest/v1/rpc/church_apply', { method: 'POST', body: JSON.stringify({ c: server().churchId, changes: part }) });
+      for (const r of res || []) baseline.set(r.kind + '/' + r.id, { payload: copy(part.find(x => x.kind === r.kind && x.id === r.id).payload), version: r.version });
+    }
+    return changes.length;
+  }
   const staff = body => request('/functions/v1/staff-gateway', { method: 'POST', body: JSON.stringify({ churchId: server().churchId, ...body }) });
   const staffList = () => request('/rest/v1/staff_accounts?church_id=eq.' + encodeURIComponent(server().churchId) + '&select=user_id,display_name,role,district,status,code_issued_at,phone&order=created_at.desc');
   const auditLog = () => request('/rest/v1/staff_audit?church_id=eq.' + encodeURIComponent(server().churchId) + '&select=at,action,target&order=at.desc&limit=30');
@@ -160,6 +182,6 @@
     builtInServer: !!server().builtIn, hasServer: hasServer(), busy,
   });
 
-  global.HamkkeStore = { KINDS, empty, server, setServer, hasServer, codeLogin, emailLogin, signOut, load, save, diff, staff, staffList, auditLog, status, loadMember, request,
+  global.HamkkeStore = { KINDS, empty, server, setServer, hasServer, codeLogin, emailLogin, signOut, load, save, diff, remove, restore, staff, staffList, auditLog, status, loadMember, request,
     on(fn) { listeners.add(fn); return () => listeners.delete(fn); } };
 })(typeof window !== 'undefined' ? window : globalThis);

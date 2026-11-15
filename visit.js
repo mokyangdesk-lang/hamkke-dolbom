@@ -56,8 +56,7 @@
   Pages.today = {
     label: '오늘 할 일',
     render(ctx) {
-      const s = ctx.state, mineOnly = ctx.me.role === 'visitor';
-      const scope = p => !mineOnly || isMine(ctx.me, p);
+      const s = ctx.state, scope = () => true; // 교구 전체(같은 교구 사역자가 함께 봄)
       const bdays = K.carePeople(s).map(p => ({ p, d: C.birthdayDistance(p, today()) })).filter(x => x.d !== null && x.d >= 0 && x.d <= 7 && scope(x.p)).sort((a, b) => a.d - b.d);
       const due = K.dueRecontacts(s).filter(x => scope(x.p));
       const long = K.longNoContact(s).filter(x => scope(x.p));
@@ -65,7 +64,7 @@
       const section = (title, hint, items) => `<section class="card"><div class="between"><h2>${title} <span class="chip">${items.length}</span></h2><span class="muted small">${hint}</span></div>
         ${items.length ? `<div class="list">${items.join('')}</div>` : '<p class="muted">없습니다.</p>'}</section>`;
       return `<div class="eyebrow">심방</div><h1 class="page-title">오늘 할 일</h1>
-      <p class="subtitle">${esc(today())} · ${mineOnly ? '내 담당 성도 기준' : esc(ctx.me.district) + ' 전체'}</p>
+      <p class="subtitle">${esc(today())} · ${esc(ctx.me.district)} 전체(같은 교구 심방사역자와 함께 봄)</p>
       ${pending ? `<button type="button" class="notice-btn" data-go="report">승인할 주간 보고서가 있습니다 →</button>` : ''}
       ${section('생일', '오늘부터 7일 안', bdays.map(x => personRow(ctx, x.p, ` <span class="chip warn">${x.d === 0 ? '오늘 생일' : x.d + '일 뒤 생일'}</span>`)))}
       ${section('다시 연락할 분', '정해 둔 날이 된 분', due.map(x => personRow(ctx, x.p, ` <span class="chip">예정 ${esc(x.v.nextDate)}</span>`)))}
@@ -75,21 +74,20 @@
   };
 
   // ── 교구 성도 (같은 교구 사역자와 공유)
-  let peopleFilter = 'mine', peopleSearch = '';
+  // 교구 성도: 같은 교구 심방사역자가 모두 같은 명단을 봅니다(엑셀 교구 칸으로 자동 분류, 사람별 배정 없음).
+  let peopleFilter = 'all', peopleSearch = '';
   Pages.people = {
     label: '교구 성도',
     render(ctx) {
-      const s = ctx.state, isVisitor = ctx.me.role === 'visitor';
-      if (!isVisitor && peopleFilter === 'mine') peopleFilter = 'all';
+      const s = ctx.state;
       let list = K.carePeople(s);
-      if (peopleFilter === 'mine') list = list.filter(p => isMine(ctx.me, p));
-      if (peopleFilter === 'none') list = list.filter(p => !p.visitorId);
+      if (peopleFilter === 'long') { const ids = new Set(K.longNoContact(s).map(x => x.p.id)); list = list.filter(p => ids.has(p.id)); }
       if (peopleSearch) list = list.filter(p => [p.name, p.phone].some(v => String(v || '').includes(peopleSearch)));
       list.sort((a, b) => String(a.name).localeCompare(b.name, 'ko'));
       return `<div class="eyebrow">심방</div><h1 class="page-title">${esc(ctx.me.district)} 성도</h1>
       <p class="subtitle">같은 교구 심방사역자와 명단을 함께 봅니다. 누가 언제 연락했는지 보고 겹치지 않게 연락하세요.</p>
       <div class="filters"><input id="peopleSearch" placeholder="이름 · 전화번호 찾기" value="${esc(peopleSearch)}" aria-label="이름 또는 전화번호 찾기">
-        <div class="seg" role="group" aria-label="보기">${(isVisitor ? [['mine', '내 담당'], ['all', '교구 전체'], ['none', '미배정']] : [['all', '교구 전체'], ['none', '미배정']]).map(([k, l]) => `<button type="button" data-f="${k}" class="${peopleFilter === k ? 'active' : ''}">${l}</button>`).join('')}</div></div>
+        <div class="seg" role="group" aria-label="보기">${[['all', `교구 전체 ${K.carePeople(s).length}`], ['long', '오래 연락 못 한 분']].map(([k, l]) => `<button type="button" data-f="${k}" class="${peopleFilter === k ? 'active' : ''}">${l}</button>`).join('')}</div></div>
       <section class="card">${list.length ? `<div class="list">${list.map(p => personRow(ctx, p)).join('')}</div>` : '<p class="muted">해당하는 분이 없습니다.</p>'}</section>`;
     },
     bind(ctx) {
@@ -113,7 +111,7 @@
       const head = `<div class="eyebrow">${min === 'new' ? '새가족' : '심방'}</div><h1 class="page-title">문자 보내기</h1>
         <ol class="flow steps">${steps.map((t, i) => `<li class="${i + 1 === flow.step ? 'now' : i + 1 < flow.step ? 'done' : ''}">${t}</li>`).join('')}</ol>`;
       if (flow.step === 1) {
-        const quick = min === 'new' ? [['nc-active', '진행 중'], ['nc-waiting', '매칭 대기'], ['nc-fellowship', '새사귐 중']] : [['mine', '내 담당'], ['bday', '7일 안 생일'], ['due', '다시 연락할 분'], ['long', '오래 연락 못 한 분']];
+        const quick = min === 'new' ? [['nc-active', '진행 중'], ['nc-waiting', '매칭 대기'], ['nc-fellowship', '새사귐 중']] : [['all', '교구 전체'], ['bday', '7일 안 생일'], ['due', '다시 연락할 분'], ['long', '오래 연락 못 한 분']];
         return head + `<section class="card"><h2>누구에게 보낼까요?</h2><div class="acts">${quick.map(([k, l]) => `<button type="button" data-quick="${k}">${l} 고르기</button>`).join('')}<button type="button" data-quick="clear" class="quiet">모두 해제</button></div>
           <div class="list" style="margin-top:12px">${people.map(p => `<label class="row pick"><input type="checkbox" name="to" value="${esc(p.id)}" ${flow.ids.includes(p.id) ? 'checked' : ''} ${p.phone ? '' : 'disabled'}><span class="grow"><b>${esc(p.name)}</b> <span class="muted small">${p.phone ? esc(p.phone) : '전화번호 없음'}</span></span></label>`).join('')}</div>
           <div class="acts sticky-acts"><button type="button" class="primary" id="toStep2">다음: 어떤 문자 (${flow.ids.length}명)</button></div></section>`;
@@ -141,7 +139,7 @@
       $$('[data-quick]').forEach(b => b.onclick = () => {
         const k = b.dataset.quick, has = p => p.phone, N = root.NewcomerCore;
         const pick = k.startsWith('nc-') ? N.newcomers(s).filter(p => { const bk = N.bucket(s, p); return k === 'nc-active' ? !['settled', 'paused'].includes(bk) : bk === k.slice(3); })
-          : k === 'mine' ? K.carePeople(s).filter(p => isMine(ctx.me, p)) : k === 'bday' ? K.carePeople(s).filter(p => { const d = C.birthdayDistance(p, today()); return d !== null && d >= 0 && d <= 7; })
+          : k === 'all' ? K.carePeople(s) : k === 'bday' ? K.carePeople(s).filter(p => { const d = C.birthdayDistance(p, today()); return d !== null && d >= 0 && d <= 7; })
           : k === 'due' ? K.dueRecontacts(s).map(x => x.p) : k === 'long' ? K.longNoContact(s).map(x => x.p) : [];
         flow.ids = k === 'clear' ? [] : [...new Set([...flow.ids, ...pick.filter(has).map(p => p.id)])]; ctx.render();
       });
