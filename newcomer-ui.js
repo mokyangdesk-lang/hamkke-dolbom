@@ -33,55 +33,100 @@
     }).join('')}</ol>`;
   }
 
-  // ── 현황판
-  let boardFilter = 'active', boardSearch = '', boardDistrict = '', onlyRequests = false;
+  // ── 현황판(새가족 카드): 이름·표·한 줄 정보·아이콘 → 다음 할 일 → 펼치면 진행 그림·회차·문자 예문
+  let boardFilter = 'active', boardSearch = '', boardDistrict = '';
+  let onlyRequests = false;
+  const openSteps = new Set(); // 펼쳐 둔 "전체 진행 과정"은 다시 그려도 펼친 채로
+  const SVG = {
+    tel: '<path d="M5 4h3.2l1.6 4-2 1.3a10 10 0 0 0 6.9 6.9l1.3-2 4 1.6V19a1.5 1.5 0 0 1-1.6 1.5A15.5 15.5 0 0 1 3.5 5.6 1.5 1.5 0 0 1 5 4Z"/>',
+    sms: '<path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 3.5V16H6.5A2.5 2.5 0 0 1 4 13.5Z"/>',
+    rec: '<path d="M14.5 4.5l5 5L9 20H4v-5Z"/><path d="M12.5 6.5l5 5"/>',
+    open: '<path d="M9 5l7 7-7 7"/>',
+  };
+  const ico = k => `<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${SVG[k]}</svg>`;
+  const dotDate = d => C.validDate(d) ? d.replace(/-/g, '.') : '';
+  // 다음 단계에 어울리는 문자 예문
+  const NEXT_TPL = { welcomeCall: 'welcome', groupInvite: 'welcome', education: 'education', matching: 'mentor', fellowship: 'mentor', friends: 'friends', loveGroup: 'lovegroup', settled: 'graduate' };
+  const missedEdu = (s, p) => s.education.some(e => e.personId === p.id && e.status === 'absent' && !C.completed(s, p.id, e.course).has(String(e.subject)));
+  const isLate = (s, p) => N.progressOf(s, p.id).status !== 'paused' && N.stages(s, p).some(x => x.overdue);
+
   Pages.board = {
     get label() { return root.UI && root.HamkkeApp?.ctx().me.role === 'committee' ? '새가족 현황판' : '새가족 현황'; },
     render(ctx) {
       const s = ctx.state, me = ctx.me, team = TEAM.includes(me.role);
       let list = N.newcomers(s);
       const c = N.counts(s, list), reqs = N.openRequests(s, me), reqIds = new Set(reqs.map(n => n.personId));
+      const late = list.filter(p => !['settled', 'paused'].includes(N.bucket(s, p)) && isLate(s, p)).length;
       if (boardDistrict) list = list.filter(p => p.district === boardDistrict);
-      if (boardFilter !== 'all') list = list.filter(p => { const b = N.bucket(s, p); return boardFilter === 'active' ? !['settled', 'paused'].includes(b) : b === boardFilter; });
+      if (boardFilter === 'late') list = list.filter(p => !['settled', 'paused'].includes(N.bucket(s, p)) && isLate(s, p));
+      else if (boardFilter !== 'all') list = list.filter(p => { const b = N.bucket(s, p); return boardFilter === 'active' ? !['settled', 'paused'].includes(b) : b === boardFilter; });
       if (onlyRequests) list = list.filter(p => reqIds.has(p.id));
       if (boardSearch) list = list.filter(p => [p.name, p.phone].some(v => String(v || '').includes(boardSearch)));
       list.sort((a, b) => String(a.registeredAt || '').localeCompare(String(b.registeredAt || '')) || String(a.name).localeCompare(b.name, 'ko'));
       const districts = [...new Set(N.newcomers(s).map(p => p.district))].sort((a, b) => a.localeCompare(b, 'ko'));
-      const filters = [['active', '진행 중', c.active], ['waiting', '매칭 대기', c.waiting], ['fellowship', '새사귐 중', c.fellowship], ['settled', '정착·인계 대기', c.settled], ['paused', '중단', c.paused], ['all', '전체', c.all]];
-      return `<div class="eyebrow">새가족</div><h1 class="page-title">${me.role === 'committee' ? esc(me.district) + ' 새가족 현황판' : '새가족 현황'}</h1>
-      <ol class="flow small-flow">${N.STAGES.map(x => `<li>${esc(x.label)}</li>`).join('')}</ol>
+      const filters = [['active', '진행 중', c.active], ['late', '확인일 지남', late], ['waiting', '매칭 대기', c.waiting], ['fellowship', '새사귐 중', c.fellowship], ['settled', '정착·인계 대기', c.settled], ['paused', '중단', c.paused], ['all', '전체', c.all]];
+      const canAdd = me.role === 'newcomer_admin' || me.role === 'admin';
+      return `<div class="page-head"><div><div class="eyebrow">진행 중 ${c.active}명${late ? ` · <span class="danger">늦어짐 ${late}</span>` : ''}</div>
+          <h1 class="page-title">${me.role === 'committee' ? esc(me.district) + ' 새가족 현황판' : '새가족 현황'}</h1></div>
+        ${canAdd ? '<button type="button" class="primary" id="ncAdd">+ 새가족 추가</button>' : ''}</div>
       ${reqs.length ? `<button type="button" class="notice-btn" id="reqBtn">${onlyRequests ? '모든 새가족 보기' : `확인 요청 메모 ${reqs.length}건 보기 →`}</button>` : ''}
       <div class="seg wrap" role="group" aria-label="상태">${filters.map(([k, l, n]) => `<button type="button" data-bf="${k}" class="${boardFilter === k ? 'active' : ''}">${l} <b>${n}</b></button>`).join('')}</div>
       <div class="filters"><input id="boardSearch" placeholder="이름 · 전화번호 찾기" value="${esc(boardSearch)}" aria-label="찾기">
-        ${team ? `<select id="boardDistrict" aria-label="교구" style="max-width:200px"><option value="">모든 교구</option>${districts.map(d => `<option ${d === boardDistrict ? 'selected' : ''}>${esc(d)}</option>`).join('')}</select>` : ''}</div>
-      ${me.role === 'newcomer_admin' || me.role === 'admin' ? registerForm(ctx) : ''}
-      <section class="card">${list.length ? `<div class="list">${list.map(p => row(ctx, p, reqIds.has(p.id))).join('')}</div>` : '<p class="muted">해당하는 새가족이 없습니다.</p>'}</section>`;
+        ${team ? `<select id="boardDistrict" aria-label="교구"><option value="">모든 교구</option>${districts.map(d => `<option ${d === boardDistrict ? 'selected' : ''}>${esc(d)}</option>`).join('')}</select>` : ''}</div>
+      ${canAdd ? registerForm(ctx) : ''}
+      <section class="card nc-list">${list.length ? list.map(p => card(ctx, p, reqIds.has(p.id))).join('') : '<p class="muted nc-empty">해당하는 새가족이 없습니다.</p>'}</section>`;
     },
     bind(ctx) {
       $$('[data-bf]').forEach(b => b.onclick = () => { boardFilter = b.dataset.bf; ctx.render(); });
       const q = $('#boardSearch'); q.onchange = () => { boardSearch = q.value.trim(); ctx.render(); };
       const d = $('#boardDistrict'); if (d) d.onchange = () => { boardDistrict = d.value; ctx.render(); };
       const r = $('#reqBtn'); if (r) r.onclick = () => { onlyRequests = !onlyRequests; ctx.render(); };
+      const add = $('#ncAdd'); if (add) add.onclick = () => { const dt = $('details.card.more'); dt.open = true; dt.scrollIntoView({ block: 'center' }); dt.querySelector('input[name=name]')?.focus(); };
       bindRows(ctx); bindRegister(ctx);
     },
   };
-  function row(ctx, p, hasReq) {
-    const s = ctx.state, st = N.stages(s, p), nx = N.nextStage(st), wk = N.weeksSince(p), notes = N.notesFor(s, p.id).length;
-    const status = N.progressOf(s, p.id).status;
-    return `<div class="row nc-row"><div class="grow"><button type="button" class="name-link" data-open="${esc(p.id)}">${esc(p.name)}</button> ${TEAM.includes(ctx.me.role) || ctx.me.role === 'district_pastor' ? `<span class="muted small">${esc(p.district)}</span>` : ''}
-        ${wk ? `<span class="chip">${wk}주차</span>` : ''} ${status === 'paused' ? '<span class="chip warn">중단</span>' : ''} ${st.some(x => x.overdue) ? '<span class="chip warn">늦어짐</span>' : ''} ${hasReq ? '<span class="chip warn">확인 요청</span>' : ''} ${notes ? `<span class="chip">메모 ${notes}</span>` : ''}
-        ${dots(st)}<div class="muted small">다음: <b>${esc(nx ? nx.label : '교구 인계 대기')}</b>${nx?.detail ? ' · ' + esc(nx.detail) : ''}${nx ? ' · ' + esc(nx.who) : ''}</div>
-        <details class="nc-steps"><summary>전체 진행 과정 · ${st.filter(x => x.done).length}/${st.length} 단계</summary>${stepper(s, p, st)}</details></div>
-      <div class="acts">${nx?.manual && canProgress(ctx.me) && status !== 'paused' ? `<button class="primary" data-next="${esc(p.id)}" data-key="${nx.key}">${esc(nx.label)} 완료</button>` : ''}
-        ${p.phone ? `<a class="button" href="${M.telHref(p.phone)}">전화</a><button data-nsms="${esc(p.id)}">문자</button>` : '<button type="button" disabled title="전화번호 없음">전화</button><button type="button" disabled title="전화번호 없음">문자</button>'}
-        <button data-nrec="${esc(p.id)}">기록</button>
-        <button data-open="${esc(p.id)}">자세히</button></div></div>`;
+
+  function card(ctx, p, hasReq) {
+    const s = ctx.state, me = ctx.me, st = N.stages(s, p), nx = N.nextStage(st), wk = N.weeksSince(p), notes = N.notesFor(s, p.id).length;
+    const status = N.progressOf(s, p.id).status, done = st.filter(x => x.done).length, names = N.courses(s);
+    const wel = C.completed(s, p.id, 'welcome'), fel = C.completed(s, p.id, 'fellowship');
+    const mentor = p.mentorId ? s.mentors.find(m => m.id === p.mentorId)?.name : '';
+    const meta = [`등록 ${dotDate(p.registeredAt) || '-'}`, wk ? wk + '주째' : '', `${done}/${st.length} 단계`, p.district, mentor ? '양육도우미 ' + mentor : ''].filter(Boolean).join(' · ');
+    const tags = [st.some(x => x.overdue) && status !== 'paused' ? '<span class="chip warn">확인일 지남</span>' : '', status === 'paused' ? '<span class="chip">중단</span>' : '', hasReq ? '<span class="chip warn">확인 요청</span>' : '', notes ? `<span class="chip">메모 ${notes}</span>` : ''].join('');
+    const phone = !!p.phone, tplKey = missedEdu(s, p) ? 'absent' : nx ? NEXT_TPL[nx.key] : 'graduate';
+    const due = nx && nx.manual ? (N.progressOf(s, p.id).milestones || {})[nx.key]?.dueAt : '';
+    const eduRow = (course, label, n, set, text) => `<div class="edu-row"><b>${label}</b><div class="edu-btns ${course}">${Array.from({ length: n }, (_, i) => `<button type="button" data-cedu="${course}" data-pid="${esc(p.id)}" data-sub="${i + 1}" class="${set.has(String(i + 1)) ? 'on' : ''}" aria-pressed="${set.has(String(i + 1))}" title="${esc(text(i))}">${course === 'welcome' ? `${i + 1}. ${esc(text(i))}` : `${i + 1}주`}</button>`).join('')}</div></div>`;
+    return `<article class="nc-card">
+      <div class="nc-top"><span class="av" aria-hidden="true">${esc(String(p.name || '?').trim().charAt(0))}</span>
+        <div class="nc-main"><div class="nc-title"><button type="button" class="name-link" data-open="${esc(p.id)}">${esc(p.name)}</button>${p.office ? `<span class="muted">${esc(p.office)}</span>` : ''}${tags}</div>
+          <div class="nc-meta">${esc(meta)}</div></div>
+        <div class="nc-icons">${phone ? `<a class="ib" href="${M.telHref(p.phone)}" title="전화" aria-label="${esc(p.name)}님께 전화">${ico('tel')}</a><button type="button" class="ib" data-nsms="${esc(p.id)}" title="문자" aria-label="${esc(p.name)}님께 문자">${ico('sms')}</button>`
+          : `<button type="button" class="ib" disabled title="전화번호 없음" aria-label="전화번호 없음">${ico('tel')}</button><button type="button" class="ib" disabled title="전화번호 없음" aria-label="전화번호 없음">${ico('sms')}</button>`}
+          <button type="button" class="ib" data-nrec="${esc(p.id)}" title="연락 기록" aria-label="${esc(p.name)}님 연락 기록">${ico('rec')}</button><button type="button" class="ib" data-open="${esc(p.id)}" title="자세히" aria-label="${esc(p.name)}님 자세히">${ico('open')}</button></div></div>
+      <div class="nc-next"><span>다음: <b>${esc(nx ? nx.label : '교구 인계 대기')}</b>${due ? ' · ~' + esc(dotDate(due)) : nx?.detail ? ' · ' + esc(nx.detail) : ''}${nx ? ' · ' + esc(nx.who) : ''}</span>
+        ${nx?.manual && canProgress(me) && status !== 'paused' ? `<button type="button" class="primary" data-next="${esc(p.id)}" data-key="${nx.key}">${esc(nx.label)} 완료</button>` : ''}</div>
+      <details class="nc-steps" data-steps="${esc(p.id)}" ${openSteps.has(p.id) ? 'open' : ''}><summary>전체 진행 과정 · ${done}/${st.length} 단계</summary>
+        ${stepper(s, p, st)}
+        ${canAttendance(me) ? eduRow('welcome', '새가족교육', 4, wel, i => names.welcome[i]) : ''}
+        ${canProgress(me) && p.mentorId && wel.size === 4 ? eduRow('fellowship', '새사귐반', 8, fel, i => names.fellowship[i]) : ''}
+        ${phone ? `<div class="edu-row"><b>문자</b><div class="edu-btns tpls">${M.templatesFor(s, 'new').map(t => `<button type="button" class="tpl-chip ${t.key === tplKey ? 'next' : ''}" data-ctpl="${t.key}" data-pid="${esc(p.id)}" title="${t.key === tplKey ? '지금 단계에 보낼 문자' : ''}">${esc(t.label)}</button>`).join('')}</div></div>` : ''}
+      </details></article>`;
+  }
+  // 4과목·새사귐 회차: 누르면 오늘 날짜로 이수, 이수한 것을 다시 누르면 취소(물어봄)
+  async function toggleEdu(ctx, p, course, sub, after) {
+    const s = ctx.state, names = N.courses(s), done = C.completed(s, p.id, course).has(String(sub));
+    const title = course === 'welcome' ? names.welcome[sub - 1] : sub + '주 ' + names.fellowship[sub - 1];
+    if (done && !(await ask('이수 취소', `${p.name}님의 "${title}" 이수 기록을 취소할까요?`, '취소하기', true))) return;
+    if (await ctx.commit(st2 => C.upsertEducation(st2, { id: uid(), personId: p.id, course, subject: String(sub), status: done ? 'absent' : 'completed', date: today(), recordedBy: ctx.me.name }), done ? '이수 기록을 취소했습니다.' : `"${title}" 이수를 기록했습니다.`)) after?.();
   }
   function bindRows(ctx) {
     $$('[data-open]').forEach(b => b.onclick = () => detail(ctx, b.dataset.open));
     $$('[data-next]').forEach(b => b.onclick = () => { const p = ctx.state.people.find(x => x.id === b.dataset.next); stageDialog(ctx, p, b.dataset.key, 'done', closeDialog); });
     $$('[data-nrec]').forEach(b => b.onclick = () => root.HamkkeVisit.visitForm(ctx, b.dataset.nrec));
     $$('[data-nsms]').forEach(b => b.onclick = () => root.HamkkeVisit.startMessage(ctx, [b.dataset.nsms]));
+    $$('[data-steps]').forEach(d => d.ontoggle = () => { if (d.open) openSteps.add(d.dataset.steps); else openSteps.delete(d.dataset.steps); });
+    $$('[data-cedu]').forEach(b => b.onclick = () => { const p = ctx.state.people.find(x => x.id === b.dataset.pid); if (p) toggleEdu(ctx, p, b.dataset.cedu, Number(b.dataset.sub)); });
+    $$('[data-ctpl]').forEach(b => b.onclick = () => root.HamkkeVisit.startMessage(ctx, [b.dataset.pid], b.dataset.ctpl, 'new'));
   }
 
   // ── 한 명 등록(새가족 관리자): 엑셀과 같은 검사(교구 이름, 같은 분 경고)를 거칩니다.
@@ -216,7 +261,7 @@
       <section class="card"><h2>인계 대기 <span class="chip">${ready.length}</span></h2>${ready.length ? `<div class="list">${ready.map(p => { const st = N.stages(s, p); return `<div class="row"><div class="grow"><b>${esc(p.name)}</b> <span class="muted small">등록 ${esc(p.registeredAt || '-')} · 정착 확인 ${esc(N.progressOf(s, p.id).milestones.settled.completedAt)}</span>${dots(st)}
         <div class="muted small">${st.filter(x => x.done && x.detail).map(x => esc(x.label + ' ' + x.detail)).join(' · ')}</div></div><button class="primary" data-accept="${esc(p.id)}">인계 받기</button></div>`; }).join('')}</div>` : '<p class="muted">인계를 기다리는 분이 없습니다.</p>'}</section>
       ${reqs.length ? `<section class="card"><h2>확인 요청 메모 <span class="chip warn">${reqs.length}</span></h2><div class="list">${reqs.map(n => { const p = s.people.find(x => x.id === n.personId); return `<div class="row"><div class="grow"><b>${esc(p?.name || '')}</b> <span class="muted small">${esc(n.authorName || '')}</span><p class="small">${esc(n.text)}</p></div><button data-open="${esc(n.personId)}">열기</button></div>`; }).join('')}</div></section>` : ''}
-      <section class="card"><h2>과정 중인 새가족 <span class="chip">${list.length}</span></h2>${list.length ? `<div class="list">${list.map(p => row(ctx, p, reqs.some(n => n.personId === p.id))).join('')}</div>` : '<p class="muted">없습니다.</p>'}</section>`;
+      <h2 class="section-title">과정 중인 새가족 <span class="chip">${list.length}</span></h2><section class="card nc-list">${list.length ? list.map(p => card(ctx, p, reqs.some(n => n.personId === p.id))).join('') : '<p class="muted nc-empty">없습니다.</p>'}</section>`;
     },
     bind(ctx) {
       bindRows(ctx);
