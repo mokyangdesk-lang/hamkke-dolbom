@@ -24,8 +24,21 @@
   --focus: color-mix(in oklab, var(--accent) 35%, transparent);
   color-scheme: light;
 }
+/* 어두운 화면: 테마의 밝기가 "어둡게"이거나, "기기 설정 따라"이면서 기기가 어두운 모드일 때 */
+:root[data-mode="dark"] {
+    --accent: var(--accent-d); --on-accent: #0f1311;
+    --bg: color-mix(in oklab, var(--accent) 5%, #101312);
+    --surface: #181c1a; --surface-2: color-mix(in oklab, var(--accent) 5%, #1d2220);
+    --ink: #edf0ee; --ink-2: #cfd6d2; --muted: #9ea8a3;
+    --line: color-mix(in oklab, var(--accent) 10%, #2a302d); --line-strong: color-mix(in oklab, var(--accent) 16%, #39413d);
+    --accent-soft: color-mix(in oklab, var(--accent) 18%, #181c1a); --accent-softer: color-mix(in oklab, var(--accent) 9%, #181c1a);
+    --accent-text: var(--accent);
+    --ok: #7fd3a4; --ok-soft: #1c3327; --warn: #f2bb6b; --warn-soft: #3a2c16; --bad: #f4a49c; --bad-soft: #3d2220;
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / .4); --shadow: 0 1px 2px rgb(0 0 0 / .4), 0 12px 30px -14px rgb(0 0 0 / .6); --shadow-lg: 0 24px 60px -20px rgb(0 0 0 / .7);
+    color-scheme: dark;
+  }
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root[data-mode="auto"] {
     --accent: var(--accent-d); --on-accent: #0f1311;
     --bg: color-mix(in oklab, var(--accent) 5%, #101312);
     --surface: #181c1a; --surface-2: color-mix(in oklab, var(--accent) 5%, #1d2220);

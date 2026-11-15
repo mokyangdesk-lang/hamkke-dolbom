@@ -40,8 +40,8 @@
       <ol class="flow"><li>이름</li><li>역할</li><li>교구</li><li>코드 발급</li><li>본인에게 전달</li></ol>
       ${g.length ? '' : '<p class="notice">먼저 <button type="button" class="link" data-go="groups">교구 설정</button>을 저장해 주세요. 교구 이름이 정해져야 담당자를 등록할 수 있습니다.</p>'}
       <section class="card"><h2>새 담당자 등록</h2>
-        <form id="staffCreate" class="form-grid">
-          <label>이름<input name="name" required maxlength="40" autocomplete="off"></label>
+        <form id="staffCreate" class="form-grid" novalidate>
+          <label>이름<input name="name" id="createName" maxlength="40" autocomplete="off" placeholder="예: 홍길동"></label>
           <label>역할<select name="role" id="createRole">${ISSUABLE.map(r => `<option value="${r}">${ROLE[r]}</option>`).join('')}</select></label>
           <label id="createDistrictWrap">교구<select name="district" id="createDistrict">${districtOptions(ctx, 'visitor')}</select></label>
           <p id="createDistrictNote" class="muted small" hidden>새가족팀은 교구 없이 모든 교구의 새가족을 봅니다.</p>
@@ -59,6 +59,9 @@
       role.onchange = syncRole; syncRole();
       $('#staffCreate').onsubmit = async e => {
         e.preventDefault(); const f = Object.fromEntries(new FormData(e.target));
+        f.name = String(f.name || '').trim();
+        if (!f.name) { toast('이름을 입력해 주세요. 담당자 본인이 로그인할 때 쓰는 이름입니다.'); $('#createName').focus(); return; }
+        if (NEEDS_DISTRICT.includes(f.role) && !f.district) { toast('교구를 골라 주세요. 교구가 없으면 먼저 "교구 설정"을 저장해 주세요.'); return; }
         if (!NEEDS_DISTRICT.includes(f.role)) f.district = '';
         const btn = $('button.primary', e.target); btn.disabled = true;
         try { const r = await store.staff({ action: 'create', name: f.name, role: f.role, district: f.district }); e.target.reset(); syncRole(); await loadStaff(ctx, true); list(); showCode('코드 발급', f.name, r.code); }
@@ -323,6 +326,8 @@
       <section class="card"><h2>글꼴</h2><div class="fontlist">${Object.entries(T.FONTS).map(([k, f]) => `<button type="button" class="fontopt ${d.font === k ? 'on' : ''}" data-font="${k}" aria-pressed="${d.font === k}">
         <span class="sample" style="font-family:${f.family ? f.family + ',' : ''} system-ui">함께 돌봄 가나다 123</span><span class="muted small">${esc(f.name)} · ${esc(f.note)}</span></button>`).join('')}</div>
         <p class="muted small">웹 글꼴은 처음 한 번 인터넷에서 받아 옵니다. 받지 못하면 기기 기본 글꼴로 보입니다.</p></section>
+      <section class="card"><h2>밝기</h2><div class="seg" role="group" aria-label="밝기">${Object.entries(T.MODES).map(([k, n]) => `<button type="button" data-mode="${k}" class="${d.mode === k ? 'active' : ''}">${esc(n)}</button>`).join('')}</div>
+        <p class="muted small">"기기 설정 따라"를 고르면 각 기기의 어두운 모드 설정에 맞춰 바뀝니다. 처음에는 "밝게"가 읽기 편합니다.</p></section>
       <section class="card"><h2>글자 크기</h2><div class="seg" role="group" aria-label="글자 크기">${Object.entries(T.SIZES).map(([k, s]) => `<button type="button" data-size="${k}" class="${d.size === k ? 'active' : ''}">${esc(s.name)}</button>`).join('')}</div>
         <p class="muted small">어르신 사역자가 많으면 "크게" 이상을 권합니다. 각 기기의 확대 기능도 함께 쓸 수 있습니다.</p></section>
       <section class="card"><h2>미리 보기</h2><div class="preview-card"><div class="eyebrow">심방</div><h3 style="margin:4px 0 10px">오늘 할 일</h3>
@@ -335,6 +340,7 @@
       $$('[data-palette]').forEach(b => b.onclick = () => pick({ palette: b.dataset.palette }));
       $$('[data-font]').forEach(b => b.onclick = () => pick({ font: b.dataset.font }));
       $$('[data-size]').forEach(b => b.onclick = () => pick({ size: b.dataset.size }));
+      $$('[data-mode]').forEach(b => b.onclick = () => pick({ mode: b.dataset.mode }));
       $('#themeReset').onclick = () => { themeDraft = null; T.apply(saved); ctx.render(); };
       $('#themeSave').onclick = async () => {
         const t = themeDraft;

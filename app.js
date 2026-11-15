@@ -36,12 +36,19 @@
   }
   function setStatus(t) { const el = $('#syncState'); if (el) el.textContent = t; }
 
+  // 역할별 주소(?for=visit|new|admin): 로그인 화면의 제목과 안내만 바뀝니다. 실제로 열리는 화면은 코드(서버의 역할)가 정합니다.
+  const ENTRY = {
+    visit: { title: '심방사역자 로그인', tags: ['심방사역자'], note: '관리자에게 받은 이름과 코드를 넣으면 심방 화면이 열립니다.' },
+    new: { title: '새가족위원 로그인', tags: ['새가족위원', '새가족팀'], note: '관리자에게 받은 이름과 코드를 넣으면 새가족 화면이 열립니다.' },
+    admin: { title: '관리자 로그인', tags: ['전체 관리자'], note: '전체 관리자는 아래 "관리자 이메일 로그인"을 쓰세요. 교구 목사님과 새가족팀은 이름과 코드로 로그인합니다.' },
+  };
+  const entry = () => { try { return ENTRY[new URLSearchParams(location.search).get('for')] || null; } catch (_) { return null; } };
   function loginHTML(message) {
-    const s = me(), sv = store.server();
+    const s = me(), sv = store.server(), e = entry();
     return `<main class="login" id="main"><div class="login-card">
-      <div class="brand-mark" aria-hidden="true">✦</div><h1>함께 돌봄</h1><p class="muted">심방 · 새가족 사역자의 수첩</p>
-      <div class="who-login" aria-label="이 화면에서 로그인하는 분"><span>심방사역자</span><span>새가족위원</span><span>교구 목사</span><span>새가족팀</span></div>
-      <p class="muted small">모두 이 화면에서 로그인합니다. 받은 코드에 맞는 화면(심방 또는 새가족)이 자동으로 열립니다.</p>
+      <div class="brand-mark" aria-hidden="true">✦</div><h1>${e ? esc(e.title) : '함께 돌봄'}</h1><p class="muted">${e ? '함께 돌봄 · ' : ''}심방 · 새가족 사역자의 수첩</p>
+      <div class="who-login" aria-label="이 화면에서 로그인하는 분">${(e ? e.tags : ['심방사역자', '새가족위원', '교구 목사', '새가족팀']).map(t => `<span>${esc(t)}</span>`).join('')}</div>
+      <p class="muted small">${e ? esc(e.note) : '모두 이 화면에서 로그인합니다. 받은 코드에 맞는 화면(심방 또는 새가족)이 자동으로 열립니다.'}</p>
       ${message ? `<p class="notice" role="alert">${esc(message)}</p>` : ''}
       ${s.hasServer ? '' : '<p class="notice">서버 정보가 아직 없습니다. 아래 "서버 정보 입력"을 관리자에게 받아 한 번 입력해 주세요.</p>'}
       <form id="codeLogin" class="stack">
@@ -50,7 +57,7 @@
         <button class="primary big" ${s.hasServer ? '' : 'disabled'}>로그인</button>
       </form>
       <p class="muted small">코드는 관리자에게 받습니다. 잊어버리셨으면 관리자에게 새 코드를 요청하세요. 이전 코드는 그때부터 쓸 수 없습니다.</p>
-      <details class="more"><summary>관리자 이메일 로그인</summary>
+      <details class="more" ${e === ENTRY.admin ? 'open' : ''}><summary>관리자 이메일 로그인</summary>
         <form id="emailLogin" class="stack"><label for="adminEmail">이메일</label><input id="adminEmail" name="email" type="email" autocomplete="username" required>
         <label for="adminPassword">비밀번호</label><input id="adminPassword" name="password" type="password" autocomplete="current-password" required>
         <button ${s.hasServer ? '' : 'disabled'}>관리자 로그인</button></form></details>
