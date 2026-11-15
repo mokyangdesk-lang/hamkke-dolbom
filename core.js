@@ -63,11 +63,59 @@
 
   // ── 엑셀 명단
   const SHEETS = {
-    성도명단: { kind: 'people', newcomer: false, map: { 성도ID: 'id', 이름: 'name', 휴대전화: 'phone', 교구: 'district', 생년월일: 'birthDate', 생일기준: 'birthCalendar', 올해생일: 'birthdayThisYear', 비고: 'notes' } },
-    새가족명단: { kind: 'people', newcomer: true, map: { 새가족ID: 'id', 이름: 'name', 휴대전화: 'phone', 교구: 'district', 생년월일: 'birthDate', 생일기준: 'birthCalendar', 올해생일: 'birthdayThisYear', 등록일: 'registeredAt', 양육도우미ID: 'mentorId', 섬김이ID: 'mentorId', 비고: 'notes' } },
+    성도명단: { kind: 'people', newcomer: false, map: { 성도ID: 'id', 이름: 'name', 휴대전화: 'phone', 교구: 'district', 생년월일: 'birthDate', 생일기준: 'birthCalendar', 올해생일: 'birthdayThisYear', 교회직분: 'office', 성별: 'gender', 신급: 'faithLevel', 인도자: 'leader', 그룹직책: 'groupRole', 신앙세대주: 'householder', 세대주와의관계: 'relation', 비고: 'notes' } },
+    새가족명단: { kind: 'people', newcomer: true, map: { 새가족ID: 'id', 이름: 'name', 휴대전화: 'phone', 교구: 'district', 생년월일: 'birthDate', 생일기준: 'birthCalendar', 올해생일: 'birthdayThisYear', 등록일: 'registeredAt', 교회직분: 'office', 성별: 'gender', 신급: 'faithLevel', 인도자: 'leader', 그룹직책: 'groupRole', 신앙세대주: 'householder', 세대주와의관계: 'relation', 양육도우미ID: 'mentorId', 섬김이ID: 'mentorId', 비고: 'notes' } },
     양육도우미명단: { kind: 'mentors', map: { 양육도우미ID: 'id', 섬김이ID: 'id', 이름: 'name', 휴대전화: 'phone', 교구: 'district', 양육교육이수: 'trained', 활동상태: 'active', 배정가능인원: 'capacity' } },
   };
   const ALIASES = { 섬김이명단: '양육도우미명단' }; // 4.x 양식도 읽습니다.
+
+  /* 교적 프로그램 양식(1행: 교구 제목, 2행: 소속(주요항목)·이름·생년월일·핸드폰…)
+     ID 칸이 없으므로 "이름-생년월일"(없으면 "이름-핸드폰 뒤 4자리")로 같은 분을 알아봅니다.
+     교적번호·성도ID 칸이 있으면 그것을 씁니다. */
+  const REGISTRY_HEADERS = ['소속(주요항목)', '그룹직책', '이름', '교회직분', '신앙세대주', '세대주와의관계', '생년월일', '나이', '양/음', '성별', '전화번호', '핸드폰', '신급', '최초입력일', '최종수정일', '인도자'];
+  const REGISTRY_MARK = ['소속(주요항목)', '핸드폰', '신급', '교회직분', '세대주와의관계', '양/음'];
+  function normDate(v) {
+    if (Object.prototype.toString.call(v) === '[object Date]') return isNaN(v) ? '' : iso(v);
+    if (typeof v === 'number' && v > 1000 && v < 80000) return new Date(Math.round((v - 25569) * 86400000)).toISOString().slice(0, 10);
+    const s = String(v ?? '').trim();
+    const m = s.match(/^(\d{4})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})/) || s.match(/^(\d{4})(\d{2})(\d{2})$/);
+    return m ? m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0') : s;
+  }
+  function registryHeaderRow(rows) {
+    for (let i = 0; i < Math.min((rows || []).length, 6); i++) {
+      const r = (rows[i] || []).map(x => String(x ?? '').trim());
+      if (r.includes('이름') && REGISTRY_MARK.some(h => r.includes(h))) return i;
+    }
+    return -1;
+  }
+  const districtIn = s => { const v = String(s || '').replace(/\s+/g, ''); const m = v.match(/0*(\d+)교구/); return m ? m[1] + '교구' : /청장년/.test(v) ? '청장년교구' : ''; };
+  function fromRegistry(rows, newcomer) {
+    const h = registryHeaderRow(rows); if (h < 0) return [];
+    const head = rows[h].map(x => String(x ?? '').trim()), col = name => head.indexOf(name);
+    const title = rows.slice(0, h).flat().map(x => String(x ?? '').trim()).filter(Boolean).join(' ');
+    let titleDistrict = districtIn(title) || title;
+    const get = (r, ...names) => { for (const n of names) { const i = col(n); if (i >= 0 && String(r[i] ?? '').trim() !== '') return r[i]; } return ''; };
+    const out = [];
+    for (let i = h + 1; i < rows.length; i++) {
+      const r = rows[i] || [], name = String(get(r, '이름')).trim();
+      const cells = r.map(x => String(x ?? '').trim()).filter(Boolean);
+      if (!cells.length) continue;
+      // 전체 교적 엑셀: "6교구" 제목 줄과 열 이름 줄이 다시 나오면 다음 교구로 넘어갑니다.
+      if (name === '이름' || (cells.includes('이름') && REGISTRY_MARK.some(m => cells.includes(m)))) continue;
+      if (!name && cells.length <= 2 && districtIn(cells.join(' '))) { titleDistrict = districtIn(cells.join(' ')); continue; }
+      const birth = normDate(get(r, '생년월일')), phone = String(get(r, '핸드폰', '휴대전화', '전화번호')).trim();
+      const unit = String(get(r, '소속(주요항목)', '교구')).trim();
+      const given = String(get(r, '교적번호', '성도ID', '새가족ID', '등록번호')).trim();
+      const id = given || (name && digits(birth).length === 8 ? name.replace(/\s+/g, '') + '-' + digits(birth) : name && digits(phone).length >= 4 ? name.replace(/\s+/g, '') + '-' + digits(phone).slice(-4) : '');
+      const cal = String(get(r, '양/음')).trim();
+      const row = { _row: i + 1, _registry: true, [newcomer ? '새가족ID' : '성도ID']: id, 이름: name, 휴대전화: phone, 교구: districtIn(unit) || (titleDistrict && !/교구/.test(unit) ? titleDistrict : unit), 생년월일: birth,
+        생일기준: cal ? (/음/.test(cal) ? '음력' : '양력') : '' };
+      for (const k of ['교회직분', '성별', '신급', '인도자', '그룹직책', '신앙세대주', '세대주와의관계']) row[k] = String(get(r, k)).trim();
+      if (newcomer) row.등록일 = normDate(get(r, '등록일', '최초입력일'));
+      out.push(row);
+    }
+    return out;
+  }
 
   /* previewImport(state, sheets, {allow:[시트 이름들]})
      errors: 고쳐야 적용 가능 / warnings: 확인 후 적용 가능(같은 분일 수 있음 — 자동으로 합치지 않음) */
@@ -86,8 +134,9 @@
         const item = {};
         for (const [k, v] of Object.entries(def.map)) if (row[k] !== undefined && String(row[k]).trim() !== '') item[v] = String(row[k]).trim();
         if (!Object.keys(item).length) continue;
-        const label = `${sheet} ${i + 2}행`;
-        if (!item.id) { errors.push(label + ': 고유 ID가 필요합니다.'); continue; }
+        const label = `${sheet} ${row._row || i + 2}행`;
+        for (const key of ['birthDate', 'birthdayThisYear', 'registeredAt']) if (item[key]) item[key] = normDate(item[key]);
+        if (!item.id) { errors.push(label + (row._registry ? (item.name ? ': ' + item.name + '님은 생년월일이나 핸드폰 번호가 있어야 같은 분을 알아볼 수 있습니다.' : ': 이름이 필요합니다.') : ': 고유 ID가 필요합니다.')); continue; }
         if (seen.has(item.id)) { errors.push(label + ': 같은 ID가 두 번 있습니다 ' + item.id); continue; }
         seen.add(item.id);
         const list = state[def.kind], existing = list.find(x => x.id === item.id);
@@ -149,6 +198,6 @@
     return state;
   }
 
-  root.MinistryCore = { KINDS, empty, matchDistrict, iso, validDate, weekStart, groups, DEFAULT_GROUPS, completed, welcomeCompleted, mentorLoad, mentorCandidates, waitingForMatch, upsertEducation, birthdayDistance, SHEETS, previewImport, applyImport };
+  root.MinistryCore = { KINDS, empty, matchDistrict, iso, validDate, weekStart, groups, DEFAULT_GROUPS, completed, welcomeCompleted, mentorLoad, mentorCandidates, waitingForMatch, upsertEducation, birthdayDistance, SHEETS, REGISTRY_HEADERS, normDate, registryHeaderRow, fromRegistry, previewImport, applyImport };
   if (typeof module !== 'undefined') module.exports = root.MinistryCore;
 })(typeof window !== 'undefined' ? window : globalThis);

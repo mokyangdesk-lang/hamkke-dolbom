@@ -8,7 +8,7 @@
 
   // 역할별 메뉴(순서대로). 각 화면은 Pages에 등록됩니다(admin.js 등).
   const NAV = {
-    admin: ['staff', 'groups', 'imports', 'board', 'matching', 'assign', 'templates', 'theme', 'data'],
+    admin: ['staff', 'groups', 'imports', 'roster', 'board', 'matching', 'assign', 'templates', 'theme', 'data'],
     newcomer_admin: ['board', 'attendance', 'matching', 'imports'],
     newcomer_pastor: ['board', 'attendance', 'nreports', 'message'],
     district_pastor: ['today', 'people', 'message', 'reports', 'handover', 'assign'],

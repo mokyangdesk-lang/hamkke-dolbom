@@ -170,57 +170,120 @@
     },
   };
 
-  // ── 3. 명단 올리기 (전체 관리자: 성도·새가족·양육도우미 / 새가족 관리자: 새가족·양육도우미)
-  let preview = null;
+  // ── 3. 명단 올리기 (전체 관리자: 돌봄 성도·새가족·양육도우미 / 새가족 관리자: 새가족·양육도우미)
+  // 양식은 종류별로 따로 받습니다. 파일 안의 시트 이름이 달라도 첫 줄(열 이름)로 어떤 명단인지 알아봅니다.
+  let preview = null, applied = null;
+  const TEMPLATES = {
+    성도명단: { title: '돌봄 성도', file: '함께돌봄-돌봄성도-양식.xlsx', id: '이름-생년월일 (자동)', note: '교적 프로그램에서 내려받은 엑셀을 그대로 올려도 됩니다. 소속(교구) 칸에 따라 교구별로 자동으로 나뉩니다. 각 교구 심방사역자와 교구 목사에게 그 교구 성도만 보입니다. 전체 교적 엑셀 한 파일을 올리셔도 됩니다.' },
+    새가족명단: { title: '새가족', file: '함께돌봄-새가족-양식.xlsx', id: '이름-생년월일 (자동)', note: '교적 양식과 같습니다. 최초입력일을 등록일로 씁니다. 소속(교구) 칸에 따라 그 교구에서 파송한 새가족위원과 새가족팀이 봅니다.' },
+    양육도우미명단: { title: '양육도우미', file: '함께돌봄-양육도우미-양식.xlsx', id: '양육도우미ID', note: '새가족 관리자가 4과목을 마친 새가족과 매칭할 때 씁니다.' },
+  };
   const allowSheets = role => role === 'admin' ? ['성도명단', '새가족명단', '양육도우미명단'] : ['새가족명단', '양육도우미명단'];
   const HEADERS = { 성도명단: Object.keys(C.SHEETS.성도명단.map), 새가족명단: Object.keys(C.SHEETS.새가족명단.map).filter(x => x !== '섬김이ID'), 양육도우미명단: Object.keys(C.SHEETS.양육도우미명단.map).filter(x => x !== '섬김이ID') };
-  function downloadTemplate(role) {
-    const X = root.XLSX, book = X.utils.book_new();
-    for (const s of allowSheets(role)) X.utils.book_append_sheet(book, X.utils.aoa_to_sheet([HEADERS[s]]), s);
-    X.utils.book_append_sheet(book, X.utils.aoa_to_sheet([['항목', '안내'],
-      ['시트', '시트 이름과 첫 줄(열 이름)을 바꾸지 마세요.'], ['ID', '사람마다 고유한 ID를 정하고, 다시 올릴 때도 같은 ID를 쓰세요. 같은 ID는 수정, 새 ID는 신규입니다.'],
-      ['빈칸', '빈칸은 기존 값을 지우지 않습니다.'], ['교구', "앱의 '교구 설정'에 있는 이름과 똑같이 쓰세요. 예: 1교구"],
-      ['날짜', 'YYYY-MM-DD 형식. 예: 2026-11-15'], ['생일기준', '양력 또는 음력. 음력이면 올해생일 칸에 올해 양력 날짜를 쓰세요.'],
-      ['양육도우미', '양육교육이수: 이수/미이수, 활동상태: 활동중/활동중지, 배정가능인원: 0 이상 숫자'],
-      ['같은 분 확인', '이름이나 전화번호가 같은 기록이 있으면 경고가 뜹니다. 자동으로 합치지 않습니다.']]), '작성안내');
-    X.writeFile(book, '함께돌봄-명단양식.xlsx');
+  const GUIDE_ROWS = {
+    성도명단: [['1행', '교구 이름(예: 5교구). 소속 칸이 비어 있으면 이 교구로 들어갑니다.'], ['전체 교적 엑셀', '"5교구" 제목 줄 → 명단 → "6교구" 제목 줄 → 명단처럼 여러 교구가 이어져 있어도 교구별로 나눠 읽습니다.'], ['소속(주요항목)', '"5교구", "5교구 3구역"처럼 적으면 교구를 알아봅니다.'], ['같은 분 구분', '이름 + 생년월일로 자동으로 구분합니다(예: 홍길동-19500315). 생년월일이 없으면 이름 + 핸드폰 뒤 4자리. 둘 다 없으면 올릴 수 없습니다.'], ['꼭 필요한 칸', '이름, 생년월일 또는 핸드폰, 소속(또는 1행 교구)'], ['나머지 칸', '교회직분·성별·신급·인도자 등은 있으면 함께 저장하고, 비어 있어도 됩니다. 나이·최종수정일은 쓰지 않습니다.'], ['양/음', '양 또는 음']],
+    새가족명단: [['1행', '교구 이름(예: 5교구). 그 교구에서 파송한 새가족위원이 맡습니다.'], ['같은 분 구분', '이름 + 생년월일로 자동으로 구분합니다(예: 김새가족-19900101). 생년월일이 없으면 이름 + 핸드폰 뒤 4자리.'], ['최초입력일', '새가족 등록일로 씁니다(몇 주차인지 계산).'], ['나머지 칸', '돌봄 성도 양식과 같습니다.']],
+    양육도우미명단: [['양육도우미ID', '사람마다 다른 번호(예: M3-01).'], ['양육교육이수', '이수 / 미이수'], ['활동상태', '활동중 / 활동중지'], ['배정가능인원', '동시에 맡을 수 있는 새가족 수(숫자)']],
+  };
+  function downloadTemplate(sheet) {
+    const X = root.XLSX, book = X.utils.book_new(), t = TEMPLATES[sheet];
+    X.utils.book_append_sheet(book, X.utils.aoa_to_sheet(sheet === '양육도우미명단' ? [HEADERS[sheet]] : [['1교구'], C.REGISTRY_HEADERS]), sheet);
+    X.utils.book_append_sheet(book, X.utils.aoa_to_sheet([['항목', '안내'], ...GUIDE_ROWS[sheet],
+      [sheet === '양육도우미명단' ? '첫 줄' : '2행', sheet === '양육도우미명단' ? '첫 줄(열 이름)은 바꾸지 마세요. 둘째 줄부터 한 사람씩 적습니다.' : '2행(열 이름)은 바꾸지 마세요. 3행부터 한 사람씩 적습니다.'], ['다시 올릴 때', '같은 분(같은 ID)은 수정, 새로운 분은 추가됩니다. 빈칸은 기존 값을 지우지 않습니다. 명단에서 빠진 분을 지우지도 않습니다.'],
+      ['날짜', 'YYYY-MM-DD 형식. 예: 2026-11-15'], ['같은 분 확인', '이름이나 전화번호가 같은 기록이 있으면 경고가 뜹니다. 자동으로 합치지 않습니다.']]), '작성안내');
+    X.writeFile(book, t.file);
   }
+  // 시트 이름이 달라도 첫 줄의 ID 칸으로 어떤 명단인지 알아봅니다.
+  function detectSheets(book, kindForRegistry = '성도명단') {
+    const X = root.XLSX, sheets = {};
+    for (const name of book.SheetNames) {
+      if (name === '작성안내') continue;
+      const aoa = X.utils.sheet_to_json(book.Sheets[name], { header: 1, raw: true, defval: '' });
+      if (C.registryHeaderRow(aoa) >= 0) {
+        const kind = ['성도명단', '새가족명단'].includes(name) ? name : kindForRegistry;
+        sheets[kind] = [...(sheets[kind] || []), ...C.fromRegistry(aoa, kind === '새가족명단')];
+        continue;
+      }
+      const rows = X.utils.sheet_to_json(book.Sheets[name], { defval: '', raw: false });
+      const head = X.utils.sheet_to_json(book.Sheets[name], { header: 1 })[0] || [];
+      const kind = C.SHEETS[name] ? name : name === '섬김이명단' ? '양육도우미명단' : head.includes('새가족ID') ? '새가족명단' : head.includes('성도ID') ? '성도명단' : (head.includes('양육도우미ID') || head.includes('섬김이ID')) ? '양육도우미명단' : null;
+      if (kind) sheets[kind] = [...(sheets[kind] || []), ...rows];
+    }
+    return sheets;
+  }
+  const byDistrict = p => { const m = new Map(); for (const x of p.items) if (x.item.district && x.sheet !== '양육도우미명단') m.set(x.item.district, (m.get(x.item.district) || 0) + 1);
+    return [...m].sort((a, b) => String(a[0]).localeCompare(String(b[0]), 'ko', { numeric: true })).map(([d, n]) => `${esc(d)} <b>${n}</b>명`).join(' · '); };
   Pages.imports = {
     label: '명단 올리기',
     render(ctx) {
       const sheets = allowSheets(ctx.me.role), p = preview;
-      const created = p ? p.items.filter(x => !x.existing).length : 0, updated = p ? p.items.length - created : 0;
+      const by = k => p ? p.items.filter(x => x.sheet === k) : [];
       return `<div class="eyebrow">관리</div><h1 class="page-title">명단 올리기</h1>
-      <ol class="flow"><li>양식 받기</li><li>엑셀 채우기</li><li>파일 고르기</li><li>미리 보기 확인</li><li>적용</li></ol>
-      <section class="card"><p>읽는 시트: <b>${sheets.join(' · ')}</b>. 같은 ID는 수정하고, 빈칸은 기존 값을 지우지 않습니다.</p>
-        ${C.groups(ctx.state).length ? '' : '<p class="notice">교구 설정이 아직 없어 교구 이름을 검사하지 못합니다. 먼저 교구 설정을 저장하는 것을 권합니다.</p>'}
-        <div class="acts"><button type="button" id="tpl">빈 양식 받기</button><label class="button">엑셀 파일 고르기<input id="importFile" type="file" accept=".xlsx,.xls" class="visually-hidden"></label></div></section>
+      <ol class="flow"><li>엑셀 올리기</li><li>교구별로 나뉜 것 확인</li><li>적용</li></ol>
+      ${C.groups(ctx.state).length ? '' : '<p class="notice">교구 설정이 아직 없어 교구 이름을 검사하지 못합니다. 먼저 "교구 설정"을 저장해 주세요.</p>'}
+      <div class="two">${sheets.map((k, i) => `<section class="card"><h2>${esc(TEMPLATES[k].title)} 명단</h2><p class="muted small">${esc(TEMPLATES[k].note)}</p><p class="small">같은 분 구분: <b>${esc(TEMPLATES[k].id)}</b></p>
+        <div class="acts"><button type="button" data-tpl-sheet="${k}" class="quiet">${esc(TEMPLATES[k].title)} 양식 받기</button><label class="button primary">${esc(TEMPLATES[k].title)} 엑셀 올리기<input ${i === 0 ? 'id="importFile"' : ''} data-upkind="${k}" type="file" accept=".xlsx,.xls" class="visually-hidden"></label></div></section>`).join('')}</div>
+      ${applied ? `<section class="card"><h2>적용했습니다</h2><p>${applied.map(([k, n]) => `${esc(TEMPLATES[k].title)} ${n}명`).join(' · ')}</p>
+        <div class="acts">${applied.some(([k]) => k === '성도명단') ? '<button type="button" data-go-roster="care">돌봄 성도 명단 보기</button>' : ''}${applied.some(([k]) => k === '새가족명단') ? '<button type="button" data-go-roster="new">새가족 명단 보기</button>' : ''}${applied.some(([k]) => k === '양육도우미명단') ? '<button type="button" data-go="matching">양육도우미 보기</button>' : ''}</div></section>` : ''}
       ${p ? `<section class="card"><h2>미리 보기</h2>
-        <div class="stats"><div class="stat"><b>${created}</b>신규</div><div class="stat"><b>${updated}</b>수정</div><div class="stat ${p.errors.length ? 'bad' : ''}"><b>${p.errors.length}</b>오류</div><div class="stat ${p.warnings.length ? 'warn' : ''}"><b>${p.warnings.length}</b>확인 필요</div></div>
+        <div class="stats">${sheets.filter(k => by(k).length).map(k => `<div class="stat"><b>${by(k).length}</b>${esc(TEMPLATES[k].title)} (신규 ${by(k).filter(x => !x.existing).length})</div>`).join('')}<div class="stat ${p.errors.length ? 'bad' : ''}"><b>${p.errors.length}</b>오류</div><div class="stat ${p.warnings.length ? 'warn' : ''}"><b>${p.warnings.length}</b>확인 필요</div></div>
+        ${byDistrict(p) ? `<h3>교구별로 나뉜 인원</h3><p>${byDistrict(p)}</p><p class="muted small">적용하면 각 교구 심방사역자와 교구 목사에게 그 교구 성도만 보입니다.</p>` : ''}
         ${p.errors.length ? `<h3>고쳐야 할 것</h3><ul class="error-list">${p.errors.map(e => `<li>${esc(e)}</li>`).join('')}</ul><p class="muted small">엑셀을 고친 뒤 다시 골라 주세요.</p>` : ''}
         ${p.warnings.length ? `<h3>같은 분일 수 있는 기록</h3><ul class="warn-list">${p.warnings.map(e => `<li>${esc(e)}</li>`).join('')}</ul>
           <label class="check"><input type="checkbox" id="warnOk"> 확인했습니다. 다른 분이 맞습니다(같은 분이면 엑셀의 ID를 고쳐 다시 올리세요).</label>` : ''}
-        <div class="table-wrap"><table><thead><tr><th>시트</th><th>ID</th><th>이름</th><th>교구</th><th>구분</th></tr></thead><tbody>
-        ${p.items.slice(0, 200).map(x => `<tr><td>${esc(x.sheet)}</td><td>${esc(x.item.id)}</td><td>${esc(x.item.name || '')}</td><td>${esc(x.item.district || '')}</td><td>${x.existing ? '수정' : '신규'}</td></tr>`).join('')}</tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>명단</th><th>ID</th><th>이름</th><th>교구</th><th>구분</th></tr></thead><tbody>
+        ${p.items.slice(0, 200).map(x => `<tr><td>${esc(TEMPLATES[x.sheet]?.title || x.sheet)}</td><td>${esc(x.item.id)}</td><td>${esc(x.item.name || '')}</td><td>${esc(x.item.district || '')}</td><td>${x.existing ? '수정' : '신규'}</td></tr>`).join('')}</tbody></table></div>
         ${p.items.length > 200 ? `<p class="muted small">처음 200줄만 보입니다(전체 ${p.items.length}줄).</p>` : ''}
         <div class="acts"><button type="button" id="cancelImport" class="quiet">취소</button><button type="button" id="applyImport" class="primary" ${p.errors.length || !p.items.length || p.warnings.length ? 'disabled' : ''}>확인한 명단 적용</button></div></section>` : ''}`;
     },
     bind(ctx) {
-      $('#tpl').onclick = () => { try { downloadTemplate(ctx.me.role); } catch (e) { toast('양식을 만들지 못했습니다: ' + e.message); } };
-      $('#importFile').onchange = async e => {
+      $$('[data-tpl-sheet]').forEach(b => b.onclick = () => { try { downloadTemplate(b.dataset.tplSheet); } catch (e) { toast('양식을 만들지 못했습니다: ' + e.message); } });
+      $$('[data-go-roster]').forEach(b => b.onclick = () => { rosterKind = b.dataset.goRoster; applied = null; ctx.go(ctx.me.role === 'admin' ? 'roster' : 'board'); });
+      $$('[data-go]').forEach(b => b.onclick = () => { applied = null; ctx.go(b.dataset.go); });
+      $$('[data-upkind]').forEach(inp => inp.onchange = async e => {
         const file = e.target.files[0]; if (!file) return;
         try {
           if (file.size > 10 * 1024 * 1024) throw Error('10MB 이하 파일을 골라 주세요.');
-          const book = root.XLSX.read(await file.arrayBuffer(), { type: 'array' }), sheets = {};
-          for (const name of book.SheetNames) sheets[name] = root.XLSX.utils.sheet_to_json(book.Sheets[name], { defval: '', raw: false });
-          if (!Object.keys(sheets).some(n => C.SHEETS[n] || n === '섬김이명단')) throw Error('성도명단·새가족명단·양육도우미명단 시트가 없습니다. 빈 양식을 받아 써 주세요.');
-          preview = C.previewImport(ctx.state, sheets, { allow: allowSheets(ctx.me.role) });
+          const sheets = detectSheets(root.XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true }), inp.dataset.upkind);
+          if (!Object.keys(sheets).length) throw Error('명단을 찾지 못했습니다. 교적 양식(이름·생년월일·핸드폰 칸)이나 양육도우미 양식을 써 주세요.');
+          preview = C.previewImport(ctx.state, sheets, { allow: allowSheets(ctx.me.role) }); applied = null;
           ctx.render();
         } catch (err) { toast(err.message); }
-      };
+      });
       const ok = $('#warnOk'); if (ok) ok.onchange = () => { $('#applyImport').disabled = !ok.checked || !!preview.errors.length; };
       const c = $('#cancelImport'); if (c) c.onclick = () => { preview = null; ctx.render(); };
-      const a = $('#applyImport'); if (a) a.onclick = async () => { const p = preview; if (await ctx.commit(s => C.applyImport(s, p), `${p.items.length}건을 적용했습니다.`)) { preview = null; ctx.render(); } };
+      const a = $('#applyImport'); if (a) a.onclick = async () => {
+        const p = preview, counts = Object.keys(TEMPLATES).map(k => [k, p.items.filter(x => x.sheet === k).length]).filter(x => x[1]);
+        if (await ctx.commit(s => C.applyImport(s, p), `${p.items.length}건을 적용했습니다.`)) { preview = null; applied = counts; ctx.render(); }
+      };
+    },
+  };
+
+  // ── 3-1. 성도 명단 보기 (전체 관리자): 돌봄 성도 / 새가족, 교구별, 찾기
+  let rosterKind = 'care', rosterDistrict = '', rosterSearch = '';
+  Pages.roster = {
+    label: '성도 명단',
+    render(ctx) {
+      const s = ctx.state, N = root.NewcomerCore, g = C.groups(s);
+      const all = s.people.filter(p => rosterKind === 'new' ? p.newcomer : !p.newcomer);
+      let list = all.filter(p => (!rosterDistrict || p.district === rosterDistrict) && (!rosterSearch || [p.name, p.phone, p.id].some(v => String(v || '').includes(rosterSearch))));
+      list.sort((a, b) => String(a.district).localeCompare(String(b.district), 'ko', { numeric: true }) || String(a.name).localeCompare(b.name, 'ko'));
+      const count = d => all.filter(p => p.district === d).length;
+      const nextOf = p => { const st = N ? N.nextStage(N.stages(s, p)) : null; return st ? st.label : '정착 · 인계 대기'; };
+      return `<div class="eyebrow">관리</div><h1 class="page-title">성도 명단</h1>
+      <p class="subtitle">"명단 올리기"로 올린 명단입니다. 교구 칸에 따라 교구별로 나뉘어, 그 교구 사역자에게만 보입니다.</p>
+      <div class="seg" role="group" aria-label="명단 종류"><button type="button" data-rk="care" class="${rosterKind === 'care' ? 'active' : ''}">돌봄 성도 <b>${s.people.filter(p => !p.newcomer).length}</b></button><button type="button" data-rk="new" class="${rosterKind === 'new' ? 'active' : ''}">새가족 <b>${s.people.filter(p => p.newcomer).length}</b></button></div>
+      <div class="filters"><select id="rosterDistrict" aria-label="교구" style="max-width:220px"><option value="">모든 교구</option>${g.map(x => `<option value="${esc(x.name)}" ${x.name === rosterDistrict ? 'selected' : ''}>${esc(x.name)} (${count(x.name)})</option>`).join('')}</select>
+        <input id="rosterSearch" placeholder="이름 · 전화번호 · ID로 찾기" value="${esc(rosterSearch)}" aria-label="찾기"></div>
+      <section class="card">${list.length ? `<div class="table-wrap"><table><thead><tr><th>교구</th><th>이름</th><th>직분</th><th>ID</th><th>휴대전화</th>${rosterKind === 'new' ? '<th>등록일</th><th>다음 단계</th>' : '<th>최근 연락</th>'}</tr></thead><tbody>
+        ${list.slice(0, 500).map(p => `<tr><td>${esc(p.district || '-')}</td><td><b>${esc(p.name)}</b></td><td>${esc(p.office || '')}</td><td class="muted small">${esc(p.id)}</td><td>${esc(p.phone || '')}</td>${rosterKind === 'new' ? `<td>${esc(p.registeredAt || '')}</td><td>${esc(nextOf(p))}</td>` : `<td>${esc(root.CareCore?.lastVisit(s, p.id)?.date || '기록 없음')}</td>`}</tr>`).join('')}</tbody></table></div>
+        ${list.length > 500 ? `<p class="muted small">처음 500명만 보입니다(전체 ${list.length}명). 교구나 찾기로 좁혀 주세요.</p>` : ''}`
+        : `<p class="muted">${all.length ? '찾는 분이 없습니다.' : '아직 올린 명단이 없습니다. "명단 올리기"에서 양식을 받아 올려 주세요.'}</p>`}</section>`;
+    },
+    bind(ctx) {
+      $$('[data-rk]').forEach(b => b.onclick = () => { rosterKind = b.dataset.rk; ctx.render(); });
+      $('#rosterDistrict').onchange = e => { rosterDistrict = e.target.value; ctx.render(); };
+      const q = $('#rosterSearch'); q.onchange = () => { rosterSearch = q.value.trim(); ctx.render(); };
     },
   };
 
@@ -432,5 +495,5 @@
     },
   };
 
-  root.HamkkeAdmin = { showCode, downloadTemplate, uid };
+  root.HamkkeAdmin = { showCode, downloadTemplate, detectSheets, uid };
 })(window);
