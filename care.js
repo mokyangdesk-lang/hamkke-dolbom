@@ -16,8 +16,22 @@
     const longDays = Number(s.longDays);
     return { longDays: Number.isInteger(longDays) && longDays >= 7 && longDays <= 365 ? longDays : 60 };
   }
-  const visitsOf = (state, personId) => state.visits.filter(v => v.personId === personId).sort((a, b) => (b.date + (b.createdAt || '')).localeCompare(a.date + (a.createdAt || '')));
-  const lastVisit = (state, personId) => visitsOf(state, personId)[0] || null;
+  // 성도별 연락 기록 묶음(최근 것이 앞). 기록 배열이 바뀌면(새 배열·건수 변화) 다시 만듭니다.
+  // 성도 한 명마다 전체 기록을 다시 훑지 않게 해서, 기록이 수만 건이어도 화면이 느려지지 않습니다.
+  const byPersonCache = new WeakMap();
+  const newestFirst = (a, b) => (b.date + (b.createdAt || '')).localeCompare(a.date + (a.createdAt || ''));
+  function byPerson(state) {
+    const list = state.visits || [];
+    const hit = byPersonCache.get(list);
+    if (hit && hit.n === list.length) return hit.map;
+    const map = new Map();
+    for (const v of list) { const a = map.get(v.personId); if (a) a.push(v); else map.set(v.personId, [v]); }
+    for (const a of map.values()) a.sort(newestFirst);
+    byPersonCache.set(list, { n: list.length, map });
+    return map;
+  }
+  const visitsOf = (state, personId) => (byPerson(state).get(personId) || []).slice();
+  const lastVisit = (state, personId) => (byPerson(state).get(personId) || [])[0] || null;
   const daysBetween = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / DAY);
 
   // 심방 명단: 같은 교구의 새가족이 아닌 성도(서버가 이미 범위를 정해 보내 줌)
@@ -31,7 +45,7 @@
   function longNoContact(state, today = C.iso(now())) {
     const { longDays } = settings(state);
     return carePeople(state).map(p => {
-      const last = visitsOf(state, p.id).find(v => CONNECTED.includes(v.result));
+      const last = (byPerson(state).get(p.id) || []).find(v => CONNECTED.includes(v.result));
       return { p, last, days: last ? daysBetween(last.date, today) : null };
     }).filter(x => x.days === null || x.days >= longDays).sort((a, b) => (b.days ?? 1e9) - (a.days ?? 1e9));
   }
