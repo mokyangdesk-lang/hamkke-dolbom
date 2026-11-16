@@ -98,7 +98,18 @@
   };
 
   // ── 문자 보내기: 누구에게 → 어떤 문자 → 고치기·미리 보기 → 문자 앱 열기(한 명씩)
-  let flow = { step: 1, ids: [], tpl: '', text: '', i: 0 }, adminMin = 'visit';
+  let flow = { step: 1, ids: [], tpl: '', text: '', i: 0 }, adminMin = 'visit', sender = null;
+  // 보내는 사람 서명(이름 · 직분). 처음엔 로그인한 이름과 역할로 채우고, 고친 값은 이 기기에 기억합니다.
+  const senderOf = me => (sender && sender.userId === me.userId) ? sender : (sender = { ...M.loadSender(me), userId: me.userId });
+  function senderHTML(sd) {
+    const custom = !M.TITLES.includes(sd.title);
+    return `<fieldset class="sender"><legend>보내는 사람 서명</legend>
+      <label class="check"><input type="checkbox" id="sdOn" ${sd.on ? 'checked' : ''}> 문자 끝에 서명 넣기</label>
+      <div class="sender-grid" ${sd.on ? '' : 'hidden'}><label>이름<input id="sdName" maxlength="20" value="${esc(sd.name)}" placeholder="보내는 분 이름" autocomplete="name"></label>
+        <label>직분<select id="sdTitle">${M.TITLES.map(t => `<option ${t === sd.title ? 'selected' : ''}>${t}</option>`).join('')}<option value="" ${custom ? 'selected' : ''}>직접 쓰기</option></select></label>
+        <label id="sdCustomWrap" ${custom ? '' : 'hidden'}>직분 직접 쓰기<input id="sdCustom" maxlength="20" value="${custom ? esc(sd.title) : ''}" placeholder="예: 전도사, 권사"></label></div>
+      <p class="muted small" id="sdLine">${sd.on ? '끝에 붙는 줄: ' + esc(M.signature(sd)) : '서명 없이 보냅니다.'}</p></fieldset>`;
+  }
   // 새가족위원·새가족팀은 새가족 명단과 새가족 예문을, 심방 쪽은 교구 성도와 심방 예문을 씁니다.
   const ministryOf = me => me.role === 'admin' ? adminMin : ['committee', 'newcomer_pastor', 'newcomer_admin'].includes(me.role) ? 'new' : 'visit';
   // 교육(4과목·새사귐)에 빠진 뒤 아직 그 과목을 마치지 않은 새가족
@@ -122,12 +133,13 @@
         <div class="acts"><button type="button" class="quiet" data-step="1">← 받는 사람</button></div></section>`;
       if (flow.step === 3) {
         const sample = chosen[0];
-        return head + `<section class="card"><h2>문구 고치기</h2><p class="muted small">{이름} 자리에 받는 분의 이름이 들어갑니다.</p>
+        return head + `<section class="card"><h2>문구 고치기</h2><p class="muted small">{이름} 자리에 받는 분의 이름이 들어갑니다. 보내는 사람 서명은 아래에서 고릅니다.</p>
           <textarea id="msgText" rows="6">${esc(flow.text)}</textarea>
-          <h3>미리 보기 · ${esc(sample?.name || '')}님</h3><div class="sms-preview" id="msgPreview">${esc(M.fill(flow.text, sample))}</div>
+          ${senderHTML(senderOf(ctx.me))}
+          <h3>미리 보기 · ${esc(sample?.name || '')}님</h3><div class="sms-preview" id="msgPreview">${esc(M.compose(flow.text, sample, senderOf(ctx.me)))}</div>
           <div class="acts"><button type="button" class="quiet" data-step="2">← 예문</button><button type="button" class="primary" data-step="4">다음: 보내기</button></div></section>`;
       }
-      const p = chosen[flow.i], last = flow.i >= chosen.length - 1, body = M.fill(flow.text, p), phone = M.isPhone();
+      const p = chosen[flow.i], last = flow.i >= chosen.length - 1, body = M.compose(flow.text, p, senderOf(ctx.me)), phone = M.isPhone();
       return head + `<section class="card"><div class="between"><h2>${flow.i + 1} / ${chosen.length} · ${esc(p?.name || '')}님</h2><span class="muted small">${esc(p?.phone || '')}</span></div>
         <div class="sms-preview">${esc(body)}</div>
         <div class="acts">${phone ? `<a class="button primary" id="openSms" href="${M.smsHref(p.phone, body)}">문자 앱 열기</a><button type="button" id="copyMsg">복사</button>` : `<button type="button" class="primary" id="copyMsg">문구 복사</button><a class="button" id="openSms" href="${M.smsHref(p.phone, body)}">문자 앱 열기</a>`}
@@ -149,8 +161,19 @@
       const t2 = $('#toStep2'); if (t2) t2.onclick = () => { if (!flow.ids.length) return toast('받는 분을 골라 주세요.'); flow.step = 2; ctx.render(); };
       $$('[data-tpl]').forEach(b => b.onclick = () => { const t = M.templatesFor(s, ministryOf(ctx.me)).find(x => x.key === b.dataset.tpl); flow.tpl = t.key; flow.text = t.text; flow.step = 3; ctx.render(); });
       $$('[data-step]').forEach(b => b.onclick = () => { const n = Number(b.dataset.step); if (n === 4 && !flow.text.trim()) return toast('문구를 입력해 주세요.'); flow.step = n; flow.i = 0; ctx.render(); });
-      const ta = $('#msgText'); if (ta) ta.oninput = () => { flow.text = ta.value; $('#msgPreview').textContent = M.fill(flow.text, s.people.find(p => p.id === flow.ids[0])); };
-      const cp = $('#copyMsg'); if (cp) cp.onclick = e => copyText(M.fill(flow.text, s.people.find(p => p.id === flow.ids[flow.i])), e.target);
+      const preview = () => { const pv = $('#msgPreview'); if (pv) pv.textContent = M.compose(flow.text, s.people.find(p => p.id === flow.ids[0]), senderOf(ctx.me)); };
+      const ta = $('#msgText'); if (ta) ta.oninput = () => { flow.text = ta.value; preview(); };
+      const sdOn = $('#sdOn');
+      if (sdOn) {
+        const sd = senderOf(ctx.me), sync = () => {
+          sd.on = sdOn.checked; sd.name = $('#sdName').value; sd.title = $('#sdTitle').value || $('#sdCustom').value;
+          $('.sender-grid').hidden = !sd.on; $('#sdCustomWrap').hidden = !!$('#sdTitle').value;
+          $('#sdLine').textContent = sd.on ? '끝에 붙는 줄: ' + M.signature(sd) : '서명 없이 보냅니다.';
+          M.saveSender(ctx.me, sd); preview();
+        };
+        sdOn.onchange = sync; $('#sdName').oninput = sync; $('#sdTitle').onchange = () => { sync(); if (!$('#sdTitle').value) $('#sdCustom').focus(); }; $('#sdCustom').oninput = sync;
+      }
+      const cp = $('#copyMsg'); if (cp) cp.onclick = e => copyText(M.compose(flow.text, s.people.find(p => p.id === flow.ids[flow.i]), senderOf(ctx.me)), e.target);
       const nx = $('#nextPerson'); if (nx) nx.onclick = () => { flow.i++; ctx.render(); };
       const dn = $('#msgDone'); if (dn) dn.onclick = () => { flow = { step: 1, ids: [], tpl: '', text: '', i: 0 }; toast('문자 보내기를 마쳤습니다. 보낸 기록은 따로 남지 않습니다.'); ctx.render(); };
       $$('[data-rec]').forEach(b => b.onclick = () => b.dataset.rec && visitForm(ctx, b.dataset.rec));

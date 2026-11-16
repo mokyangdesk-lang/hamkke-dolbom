@@ -367,7 +367,7 @@
     render(ctx) {
       const M = root.Messages, K = root.CareCore, tpls = M.templatesFor(ctx.state, tplMinistry);
       return `<div class="eyebrow">관리</div><h1 class="page-title">문자 예문 · 기준</h1>
-      <p class="subtitle">사역자들이 문자를 쓸 때 고르는 교회 공통 예문입니다. {이름} 자리에 받는 분 이름이 들어갑니다. 건강·가정사 같은 내용은 예문에 넣지 마세요.</p>
+      <p class="subtitle">사역자들이 문자를 쓸 때 고르는 교회 공통 예문입니다. {이름} 자리에 받는 분 이름이 들어갑니다. 끝의 서명(예: 할렐루야교회 홍길동 심방사역자 드림)은 사역자가 문자를 보낼 때 이름·직분을 골라 붙이므로 예문에는 넣지 마세요. 건강·가정사 같은 내용은 예문에 넣지 마세요.</p>
       <div class="seg" role="group" aria-label="사역"><button type="button" data-min="visit" class="${tplMinistry === 'visit' ? 'active' : ''}">심방 예문</button><button type="button" data-min="new" class="${tplMinistry === 'new' ? 'active' : ''}">새가족 예문</button></div>
       <section class="card"><form id="tplForm" class="stack">${tpls.map(t => `<label>${esc(t.label)}<textarea name="${esc(t.key)}" rows="3" maxlength="600">${esc(t.text)}</textarea></label>`).join('')}
         <div class="acts"><button type="button" id="tplReset" class="quiet">기본 예문으로 되돌리기</button><button class="primary">예문 저장</button></div></form></section>
