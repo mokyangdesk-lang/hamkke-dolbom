@@ -34,7 +34,39 @@
   }
 
   // ── 현황판(새가족 카드): 이름·표·한 줄 정보·아이콘 → 다음 할 일 → 펼치면 진행 그림·회차·문자 예문
-  let boardFilter = 'active', boardSearch = '', boardDistrict = '';
+  let boardFilter = 'active', boardSearch = '', boardDistrict = '', boardView = 'card';
+  // 한눈에 보는 진행 점검: 환영 전화 · 단톡방 · 교육 · 도우미 · 새사귐 · 프렌즈 · 사랑방 · 정착
+  const CHECK = [['welcomeCall', '환영 전화'], ['groupInvite', '단톡방'], ['education', '교육'], ['matching', '도우미'], ['fellowship', '새사귐'], ['friends', '프렌즈'], ['loveGroup', '사랑방'], ['settled', '정착']];
+  function checkItems(s, p, st = N.stages(s, p)) {
+    const m = N.progressOf(s, p.id).milestones || {};
+    return CHECK.map(([key, short]) => {
+      const x = st.find(y => y.key === key), v = m[key] || {};
+      const info = key === 'education' ? C.welcomeCompleted(s, p.id) + '/4'
+        : key === 'fellowship' ? C.completed(s, p.id, 'fellowship').size + '/8'
+        : key === 'matching' ? (x.done ? x.detail : x.detail === '매칭 대기' ? '대기' : '')
+        : x.done ? md(v.completedAt) + (v.name ? ' ' + v.name : '') : C.validDate(v.dueAt) ? '~' + md(v.dueAt) : '';
+      return { key, short, info, done: x.done, late: x.overdue, manual: !!x.manual };
+    });
+  }
+  const checkCls = c => c.done ? 'done' : c.late ? 'late' : 'todo';
+  const checkMark = c => c.done ? '✓' : c.late ? '!' : '·';
+  function checkRow(ctx, p, st, paused) {
+    const can = canProgress(ctx.me) && !paused;
+    return `<div class="nc-check" aria-label="진행 점검">${checkItems(ctx.state, p, st).map(c => {
+      const inner = `<i aria-hidden="true">${checkMark(c)}</i>${esc(c.short)}${c.info ? `<small>${esc(c.info)}</small>` : ''}`;
+      const title = `${c.short} ${c.done ? '완료' : c.late ? '예정일 지남' : '아직'}${c.info ? ' · ' + c.info : ''}`;
+      return c.manual && can ? `<button type="button" class="ck ${checkCls(c)}" data-mark="${c.key}" data-pid="${esc(p.id)}" title="${esc(title)} · 눌러서 기록">${inner}</button>` : `<span class="ck ${checkCls(c)}" title="${esc(title)}">${inner}</span>`;
+    }).join('')}</div>`;
+  }
+  function boardTable(ctx, list) {
+    const s = ctx.state, can = canProgress(ctx.me);
+    return `<div class="table-wrap"><table class="nc-table"><thead><tr><th>교구</th><th>이름</th><th>등록</th>${CHECK.map(([, l]) => `<th>${l}</th>`).join('')}</tr></thead><tbody>${list.map(p => {
+      const paused = N.progressOf(s, p.id).status === 'paused';
+      return `<tr${paused ? ' class="paused"' : ''}><td>${esc(p.district || '')}</td><td><button type="button" class="name-link" data-open="${esc(p.id)}">${esc(p.name)}</button>${paused ? ' <span class="chip">중단</span>' : ''}</td><td>${esc(md(p.registeredAt))}</td>${checkItems(s, p).map(c => {
+        const txt = `<i aria-hidden="true">${checkMark(c)}</i>${c.info ? esc(c.info) : ''}`;
+        return `<td class="ck-cell ${checkCls(c)}">${c.manual && can && !paused ? `<button type="button" class="ck-btn" data-mark="${c.key}" data-pid="${esc(p.id)}" title="${esc(c.short)} 기록">${txt}</button>` : txt}</td>`; }).join('')}</tr>`; }).join('')}</tbody></table></div>
+      <p class="muted small">✓ 완료(날짜) · ! 예정일 지남 · · 아직. ${can ? '칸을 누르면 그 단계를 기록합니다.' : ''}</p>`;
+  }
   let onlyRequests = false;
   const openSteps = new Set(); // 펼쳐 둔 "전체 진행 과정"은 다시 그려도 펼친 채로
   const SVG = {
@@ -72,12 +104,15 @@
       ${reqs.length ? `<button type="button" class="notice-btn" id="reqBtn">${onlyRequests ? '모든 새가족 보기' : `확인 요청 메모 ${reqs.length}건 보기 →`}</button>` : ''}
       <div class="seg wrap" role="group" aria-label="상태">${filters.map(([k, l, n]) => `<button type="button" data-bf="${k}" class="${boardFilter === k ? 'active' : ''}">${l} <b>${n}</b></button>`).join('')}</div>
       <div class="filters"><input id="boardSearch" placeholder="이름 · 전화번호 찾기" value="${esc(boardSearch)}" aria-label="찾기">
-        ${team ? `<select id="boardDistrict" aria-label="교구"><option value="">모든 교구</option>${districts.map(d => `<option ${d === boardDistrict ? 'selected' : ''}>${esc(d)}</option>`).join('')}</select>` : ''}</div>
+        ${team ? `<select id="boardDistrict" aria-label="교구"><option value="">모든 교구</option>${districts.map(d => `<option ${d === boardDistrict ? 'selected' : ''}>${esc(d)}</option>`).join('')}</select>` : ''}
+        <div class="seg" role="group" aria-label="보기"><button type="button" data-bview="card" class="${boardView === 'card' ? 'active' : ''}">카드</button><button type="button" data-bview="table" class="${boardView === 'table' ? 'active' : ''}">표로 한눈에</button></div></div>
       ${canAdd ? registerForm(ctx) : ''}
-      <section class="card nc-list">${list.length ? list.map(p => card(ctx, p, reqIds.has(p.id))).join('') : '<p class="muted nc-empty">해당하는 새가족이 없습니다.</p>'}</section>`;
+      ${!list.length ? '<section class="card nc-list"><p class="muted nc-empty">해당하는 새가족이 없습니다.</p></section>'
+        : boardView === 'table' ? `<section class="card">${boardTable(ctx, list)}</section>` : `<section class="card nc-list">${list.map(p => card(ctx, p, reqIds.has(p.id))).join('')}</section>`}`;
     },
     bind(ctx) {
       $$('[data-bf]').forEach(b => b.onclick = () => { boardFilter = b.dataset.bf; ctx.render(); });
+      $$('[data-bview]').forEach(b => b.onclick = () => { boardView = b.dataset.bview; ctx.render(); });
       liveSearch('boardSearch', v => { boardSearch = v; }, ctx.render);
       const d = $('#boardDistrict'); if (d) d.onchange = () => { boardDistrict = d.value; ctx.render(); };
       const r = $('#reqBtn'); if (r) r.onclick = () => { onlyRequests = !onlyRequests; ctx.render(); };
@@ -105,6 +140,7 @@
           <button type="button" class="ib" data-nrec="${esc(p.id)}" title="연락 기록" aria-label="${esc(p.name)}님 연락 기록">${ico('rec')}</button><button type="button" class="ib" data-open="${esc(p.id)}" title="자세히" aria-label="${esc(p.name)}님 자세히">${ico('open')}</button></div></div>
       <div class="nc-next"><span>다음: <b>${esc(nx ? nx.label : '교구 인계 대기')}</b>${due ? ' · ~' + esc(dotDate(due)) : nx?.detail ? ' · ' + esc(nx.detail) : ''}${nx ? ' · ' + esc(nx.who) : ''}</span>
         ${nx?.manual && canProgress(me) && status !== 'paused' ? `<button type="button" class="primary" data-next="${esc(p.id)}" data-key="${nx.key}">${esc(nx.label)} 완료</button>` : ''}</div>
+      ${checkRow(ctx, p, st, status === 'paused')}
       <details class="nc-steps" data-steps="${esc(p.id)}" ${openSteps.has(p.id) ? 'open' : ''}><summary>전체 진행 과정 · ${done}/${st.length} 단계</summary>
         ${stepper(s, p, st)}
         ${canAttendance(me) ? eduRow('welcome', '새가족교육', 4, wel, i => names.welcome[i]) : ''}
@@ -122,6 +158,8 @@
   function bindRows(ctx) {
     $$('[data-open]').forEach(b => b.onclick = () => detail(ctx, b.dataset.open));
     $$('[data-next]').forEach(b => b.onclick = () => { const p = ctx.state.people.find(x => x.id === b.dataset.next); stageDialog(ctx, p, b.dataset.key, 'done', closeDialog); });
+    // 점검 칸을 눌러 어느 단계든 기록(이미 한 단계는 날짜·사랑방 이름을 고침)
+    $$('[data-mark]').forEach(b => b.onclick = () => { const p = ctx.state.people.find(x => x.id === b.dataset.pid); stageDialog(ctx, p, b.dataset.mark, 'done', closeDialog, false); });
     $$('[data-nrec]').forEach(b => b.onclick = () => root.HamkkeVisit.visitForm(ctx, b.dataset.nrec));
     $$('[data-nsms]').forEach(b => b.onclick = () => root.HamkkeVisit.startMessage(ctx, [b.dataset.nsms]));
     $$('[data-steps]').forEach(d => d.ontoggle = () => { if (d.open) openSteps.add(d.dataset.steps); else openSteps.delete(d.dataset.steps); });
@@ -200,18 +238,19 @@
       try { const n = N.makeNote(pid, me, f.get('text'), f.get('request') === 'on'); save(st2 => { st2.notes.push(n); }, '메모를 남겼습니다.'); } catch (err) { toast(err.message); }
     };
   }
-  function stageDialog(ctx, p, key, mode, back) {
-    const label = N.STAGES.find(x => x.key === key).label;
+  function stageDialog(ctx, p, key, mode, back, reopen = true) {
+    const label = N.STAGES.find(x => x.key === key).label, cur = (N.progressOf(ctx.state, p.id).milestones || {})[key] || {};
     const body = dialog(`${p.name} · ${label}`, `<form id="stageForm" class="stack">
-      <label>${mode === 'done' ? '한 날짜' : '예정일'}<input type="date" name="d" value="${mode === 'done' ? today() : ''}" ${mode === 'done' ? `max="${today()}"` : `min="${today()}"`} required></label>
-      ${key === 'loveGroup' && mode === 'done' ? '<label>사랑방 이름<input name="name" maxlength="40"></label>' : ''}
+      ${mode === 'done' && C.validDate(cur.completedAt) ? `<p class="muted small">이미 ${esc(cur.completedAt)}에 기록되어 있습니다. 고치려면 바꾸고 저장하세요.</p>` : ''}
+      <label>${mode === 'done' ? '한 날짜' : '예정일'}<input type="date" name="d" value="${mode === 'done' ? (C.validDate(cur.completedAt) ? cur.completedAt : today()) : ''}" ${mode === 'done' ? `max="${today()}"` : `min="${today()}"`} required></label>
+      ${key === 'loveGroup' && mode === 'done' ? `<label>사랑방 이름<input name="name" maxlength="40" value="${esc(cur.name || '')}" placeholder="예: 5-3 사랑방"></label>` : ''}
       ${key === 'settled' && mode === 'done' ? '<p class="notice small">정착을 확인하면 교구 목사님 화면의 "인계 대기"에 나타납니다. 교구 목사님이 받으시면 새가족 목록에서 빠지고 심방 명단으로 옮겨집니다.</p>' : ''}
       <div class="acts"><button type="button" class="quiet" id="stageBack">뒤로</button><button class="primary">저장</button></div></form>`);
     $('#stageBack', body).onclick = back;
     $('#stageForm', body).onsubmit = async e => {
       e.preventDefault(); const f = new FormData(e.target), patch = mode === 'done' ? { completedAt: f.get('d'), ...(f.get('name') ? { name: String(f.get('name')).trim() } : {}) } : { dueAt: f.get('d') };
       closeDialog();
-      if (await ctx.commit(s => N.setMilestone(s, p.id, key, patch), mode === 'done' ? `${label} 완료를 기록했습니다.` : '예정일을 정했습니다.')) detail(root.HamkkeApp.ctx(), p.id);
+      if (await ctx.commit(s => N.setMilestone(s, p.id, key, patch), mode === 'done' ? `${label} 완료를 기록했습니다.` : '예정일을 정했습니다.') && reopen) detail(root.HamkkeApp.ctx(), p.id);
     };
   }
 

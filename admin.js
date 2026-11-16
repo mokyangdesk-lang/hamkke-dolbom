@@ -51,10 +51,14 @@
   const ROLE_ALIAS = {
     심방사역자: 'visitor', 심방: 'visitor', 새가족위원: 'committee', 새가족위원회: 'committee',
     교구목사: 'district_pastor', 목사: 'district_pastor', 교구담당목사: 'district_pastor', 전도사: 'district_pastor', 교구전도사: 'district_pastor',
-    새가족관리자: 'newcomer_admin', 새가족팀: 'newcomer_admin', 새가족담당목사: 'newcomer_pastor', 새가족목사: 'newcomer_pastor',
+    새가족관리자: 'newcomer_admin', 새가족팀: 'newcomer_admin', 새가족임원: 'newcomer_admin', 임원: 'newcomer_admin', 새가족담당목사: 'newcomer_pastor', 새가족목사: 'newcomer_pastor',
   };
   const roleOf = v => { const k = String(v || '').replace(/\s+/g, ''); return ISSUABLE.find(r => ROLE[r].replace(/\s+/g, '') === k) || ROLE_ALIAS[k] || ''; };
   const ROLE_ORDER = r => ISSUABLE.indexOf(r);
+  // 담당자 네 묶음: 목회자 · 심방사역자 · 새가족위원 · 새가족 임원
+  const STAFF_CATS = [['pastor', '목회자', ['district_pastor', 'newcomer_pastor']], ['visitor', '심방사역자', ['visitor']], ['committee', '새가족위원', ['committee']], ['officer', '새가족 임원', ['newcomer_admin']]];
+  const catOf = role => STAFF_CATS.find(c => c[2].includes(role)) || STAFF_CATS[0];
+  let staffView = 'category', staffCat = '';
   let staffImport = null, staffDone = null; // 미리 보기 / 발급 결과(코드는 이 화면에서만 보임)
   function downloadStaffTemplate(ctx) {
     const X = root.XLSX, book = X.utils.book_new(), d = C.groups(ctx.state).map(x => x.name);
@@ -168,24 +172,35 @@
     render(ctx) {
       const g = C.groups(ctx.state);
       return `<div class="eyebrow">관리</div><h1 class="page-title">담당자 관리</h1>
-      <ol class="flow"><li>이름</li><li>역할</li><li>교구</li><li>코드 발급</li><li>본인에게 전달</li></ol>
       ${g.length ? '' : '<p class="notice">먼저 <button type="button" class="link" data-go="groups">교구 설정</button>을 저장해 주세요. 교구 이름이 정해져야 담당자를 등록할 수 있습니다.</p>'}
-      <section class="card"><h2>새 담당자 등록</h2>
-        <form id="staffCreate" class="form-grid" novalidate>
+      <section class="card"><div class="between"><h2>교구별 담당자 한눈에</h2><span class="muted small" id="staffTotals"></span></div>
+        <p class="muted small">이름을 누르면 아래 목록에서 그분을 찾아 줍니다. <span class="chip warn">비어 있음</span>은 아직 담당자가 없는 자리입니다.</p>
+        <div id="staffOverview" class="table-wrap">불러오는 중…</div></section>
+      <section class="card" id="staffListCard"><div class="between"><h2>담당자 목록</h2>
+        <div class="filters"><select id="staffFilter" aria-label="교구"><option value="">모든 교구</option><option value="new">새가족팀</option>${g.map(x => `<option>${esc(x.name)}</option>`).join('')}</select>
+
+          <select id="staffStatus" aria-label="상태"><option value="">사용 중 + 중지</option><option value="active">사용 중만</option><option value="suspended">접근 중지만</option></select>
+          <input id="staffSearch" type="search" placeholder="이름 · 전화 찾기" autocomplete="off" aria-label="담당자 찾기"></div></div>
+        <div class="seg wrap" role="group" aria-label="구분" id="staffCats"></div>
+        <div class="seg" role="group" aria-label="묶어 보기" style="margin:8px 0 4px"><button type="button" data-sview="category" class="${staffView === 'category' ? 'active' : ''}">직분별로 묶기</button><button type="button" data-sview="district" class="${staffView === 'district' ? 'active' : ''}">교구별로 묶기</button></div>
+        <div id="staffList">불러오는 중…</div></section>
+      <section class="card"><h2>담당자 등록</h2>
+        <details class="more" id="staffOne"><summary>한 명씩 등록하고 코드 발급</summary>
+          <form id="staffCreate" class="form-grid" novalidate>
           <label>이름<input name="name" id="createName" maxlength="40" autocomplete="off" placeholder="예: 홍길동"></label>
           <label>휴대전화 <span class="muted small">(코드 문자용, 선택)</span><input name="phone" inputmode="tel" autocomplete="off" maxlength="20" placeholder="010-0000-0000"></label>
           <label>역할<select name="role" id="createRole">${ISSUABLE.map(r => `<option value="${r}">${ROLE[r]}</option>`).join('')}</select></label>
           <label id="createDistrictWrap">교구<select name="district" id="createDistrict">${districtOptions(ctx, 'visitor')}</select></label>
           <p id="createDistrictNote" class="muted small" hidden>새가족팀은 교구 없이 모든 교구의 새가족을 봅니다.</p>
           <div class="acts"><button class="primary" ${g.length ? '' : 'disabled'}>등록하고 코드 발급</button></div>
-        </form></section>
+        </form>
+        </details>
+      </section>
       ${g.length ? staffImportHTML() : ''}
-      <section class="card"><div class="between"><h2>등록된 담당자</h2>
-        <label class="inline">보기<select id="staffFilter"><option value="">전체</option><option value="new">새가족팀</option>${g.map(x => `<option>${esc(x.name)}</option>`).join('')}</select></label></div>
-        <div id="staffList" class="list">불러오는 중…</div></section>
-      <section class="card"><h2>최근 변경 이력</h2><div id="staffLog" class="muted small">불러오는 중…</div></section>`;
+      <section class="card"><details class="more"><summary>최근 변경 이력</summary><div id="staffLog" class="muted small">불러오는 중…</div></details></section>`;
     },
     async bind(ctx) {
+      const g = C.groups(ctx.state);
       $$('[data-go]').forEach(b => b.onclick = () => ctx.go(b.dataset.go));
       const role = $('#createRole'), dsel = $('#createDistrict');
       const syncRole = () => { const need = NEEDS_DISTRICT.includes(role.value); $('#createDistrictWrap').hidden = !need; $('#createDistrictNote').hidden = need; dsel.innerHTML = districtOptions(ctx, role.value); };
@@ -200,15 +215,50 @@
         try { const r = await store.staff({ action: 'create', name: f.name, role: f.role, district: f.district, phone: f.phone || '' }); e.target.reset(); syncRole(); await loadStaff(ctx, true); list(); showCode('코드 발급', f.name, r.code, f.role, f.phone); }
         catch (err) { toast(err.message); } finally { btn.disabled = false; }
       };
-      const list = () => {
-        if (!$('#staffFilter') || !$('#staffList')) return; // 불러오는 사이 다른 화면으로 옮긴 경우
-        const filter = $('#staffFilter').value, rows = (ctx.cache.staff || []).filter(r => !filter || (filter === 'new' ? !r.district : r.district === filter));
-        $('#staffList').innerHTML = rows.length ? rows.map(r => `<div class="row"><div class="grow"><b>${esc(r.display_name)}</b> <span class="chip ${r.status === 'active' ? 'ok' : 'warn'}">${r.status === 'active' ? '사용 중' : '접근 중지'}</span>
+      const all = () => ctx.cache.staff || [];
+      const rowHTML = r => `<div class="row" id="st-${esc(r.user_id)}"><div class="grow"><b>${esc(r.display_name)}</b> <span class="chip ${r.status === 'active' ? 'ok' : 'warn'}">${r.status === 'active' ? '사용 중' : '접근 중지'}</span>
           <div class="muted small">${esc(ROLE[r.role] || r.role)} · ${esc(r.district || '모든 교구 새가족')} · 코드 발급 ${esc(date(r.code_issued_at))}${r.phone ? ' · ' + esc(r.phone) : ''}</div></div>
           <div class="acts">${r.phone ? `<a class="button" href="${esc(root.Messages.smsHref(r.phone, linkMessage(r.display_name, r.role)))}" title="주소 안내 문자(코드 없음)">주소 문자</a>` : '<button type="button" disabled title="전화번호가 없어 문자를 보낼 수 없습니다">주소 문자</button>'}<button data-st="edit" data-id="${r.user_id}">교구·역할·전화</button><button data-st="reissue" data-id="${r.user_id}">코드 다시 발급</button>
-          <button data-st="${r.status === 'active' ? 'suspend' : 'resume'}" data-id="${r.user_id}" class="${r.status === 'active' ? 'danger' : ''}">${r.status === 'active' ? '접근 중지' : '다시 허용'}</button></div></div>`).join('')
-          : '<p class="muted">아직 등록된 담당자가 없습니다.</p>';
-        $$('[data-st]').forEach(b => b.onclick = () => act(b.dataset.st, rows.find(x => x.user_id === b.dataset.id)));
+          <button data-st="${r.status === 'active' ? 'suspend' : 'resume'}" data-id="${r.user_id}" class="${r.status === 'active' ? 'danger' : ''}">${r.status === 'active' ? '접근 중지' : '다시 허용'}</button></div></div>`;
+      // 교구별 한눈에: 줄 = 교구(+새가족팀), 칸 = 역할
+      const overview = () => {
+        const box = $('#staffOverview'); if (!box) return;
+        const S = all(), act = S.filter(r => r.status === 'active');
+        const chip = r => `<button type="button" class="name-chip ${r.status === 'active' ? '' : 'off'}" data-find="${esc(r.user_id)}" title="${r.status === 'active' ? '사용 중' : '접근 중지'}">${esc(r.display_name)}</button>`;
+        const cell = (list, need) => list.length ? list.map(chip).join('') : need ? '<span class="chip warn">비어 있음</span>' : '<span class="muted">—</span>';
+        const DR = ['district_pastor', 'visitor', 'committee'];
+        const rows = g.map(d => { const here = S.filter(r => r.district === d.name);
+          return `<tr><th scope="row"><button type="button" class="link" data-dist="${esc(d.name)}">${esc(d.name)}</button></th>${DR.map(r => `<td>${cell(here.filter(x => x.role === r), r === 'district_pastor' || (r === 'visitor' && d.visitors))}</td>`).join('')}<td class="num">${here.length}</td></tr>`; }).join('');
+        const team = S.filter(r => !r.district);
+        box.innerHTML = `<table class="overview"><thead><tr><th>교구</th><th>교구 목사</th><th>심방사역자</th><th>새가족위원</th><th class="num">합계</th></tr></thead><tbody>${rows}
+          <tr class="team"><th scope="row"><button type="button" class="link" data-dist="new">새가족팀</button></th><td colspan="3"><span class="muted small">새가족 담당 목사</span> ${cell(team.filter(x => x.role === 'newcomer_pastor'), false)} <span class="muted small" style="margin-left:10px">새가족 임원</span> ${cell(team.filter(x => x.role === 'newcomer_admin'), true)}</td><td class="num">${team.length}</td></tr></tbody></table>`;
+        const t = $('#staffTotals'); if (t) t.textContent = `모두 ${S.length}명 (${STAFF_CATS.map(([, l, roles]) => l + ' ' + S.filter(r => roles.includes(r.role)).length).join(' · ')})${S.length - act.length ? ' · 접근 중지 ' + (S.length - act.length) + '명' : ''}`;
+        $$('[data-dist]', box).forEach(b => b.onclick = () => { $('#staffFilter').value = b.dataset.dist; staffCat = ''; $('#staffSearch').value = ''; list(); $('#staffListCard').scrollIntoView({ block: 'start', behavior: 'smooth' }); });
+        $$('[data-find]', box).forEach(b => b.onclick = () => { const r = S.find(x => x.user_id === b.dataset.find); $('#staffFilter').value = r.district || 'new'; staffCat = ''; $('#staffStatus').value = ''; $('#staffSearch').value = ''; list();
+          const el = document.getElementById('st-' + r.user_id); if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1600); } });
+      };
+      const list = () => {
+        if (!$('#staffFilter') || !$('#staffList')) return; // 불러오는 사이 다른 화면으로 옮긴 경우
+        overview();
+        const f = $('#staffFilter').value, st = $('#staffStatus').value, q = $('#staffSearch').value.trim();
+        const base = all().filter(r => (!f || (f === 'new' ? !r.district : r.district === f)) && (!st || r.status === st) && (!q || matches({ name: r.display_name, phone: r.phone }, q)));
+        const cats = $('#staffCats');
+        if (cats) {
+          cats.innerHTML = [['', '전체', base.length], ...STAFF_CATS.map(([k, l, roles]) => [k, l, base.filter(r => roles.includes(r.role)).length])].map(([k, l, n]) => `<button type="button" data-scat="${k}" class="${staffCat === k ? 'active' : ''}">${l} <b>${n}</b></button>`).join('');
+          $$('[data-scat]', cats).forEach(b => b.onclick = () => { staffCat = b.dataset.scat; list(); });
+        }
+        const rows = base.filter(r => !staffCat || catOf(r.role)[0] === staffCat);
+        const order = ['district_pastor', 'newcomer_pastor', 'visitor', 'committee', 'newcomer_admin'];
+        const dOrder = [...g.map(x => x.name), ''], dIdx = r => { const i = dOrder.indexOf(r.district || ''); return i < 0 ? 999 : i; };
+        const sorted = list => list.sort((a, b) => dIdx(a) - dIdx(b) || order.indexOf(a.role) - order.indexOf(b.role) || a.display_name.localeCompare(b.display_name, 'ko'));
+        const groupsHTML = staffView === 'category'
+          ? STAFF_CATS.map(([k, l, roles]) => [l, rows.filter(r => roles.includes(r.role))]).filter(x => x[1].length).map(([l, list]) => `<div class="staff-group"><h3>${esc(l)} <span class="muted small">${list.length}명</span></h3>
+              ${(() => { const by = [...new Set(sorted(list).map(r => r.district || ''))]; return by.map(d => `<p class="role-head">${esc(d || '모든 교구(새가족팀)')}</p><div class="list">${list.filter(r => (r.district || '') === d).map(rowHTML).join('')}</div>`).join(''); })()}</div>`).join('')
+          : dOrder.map(d => [d, rows.filter(r => (r.district || '') === d)]).filter(x => x[1].length).map(([d, list]) => `<div class="staff-group"><h3>${esc(d || '새가족팀 · 모든 교구 새가족')} <span class="muted small">${list.length}명</span></h3>
+              ${STAFF_CATS.filter(c => list.some(x => c[2].includes(x.role))).map(([, l, roles]) => `<p class="role-head">${esc(l)}</p><div class="list">${sorted(list.filter(x => roles.includes(x.role))).map(rowHTML).join('')}</div>`).join('')}</div>`).join('');
+        $('#staffList').innerHTML = !all().length ? '<p class="muted">아직 등록된 담당자가 없습니다. 아래 "담당자 등록"에서 한 명씩 또는 엑셀로 등록해 주세요.</p>'
+          : !rows.length ? '<p class="muted">조건에 맞는 담당자가 없습니다.</p>' : groupsHTML;
+        $$('[data-st]').forEach(b => b.onclick = () => act(b.dataset.st, all().find(x => x.user_id === b.dataset.id)));
       };
       const act = async (a, r) => {
         try {
@@ -230,9 +280,10 @@
           $('#staffLog').innerHTML = rows.length ? rows.map(l => `<p>${esc(new Date(l.at).toLocaleString('ko-KR'))} · ${esc(ACTION[l.action] || l.action)} · ${esc(name(l.target))}</p>`).join('') : '이력이 없습니다.';
         } catch (e) { const el = $('#staffLog'); if (el) el.textContent = '이력을 불러오지 못했습니다.'; }
       };
-      $('#staffFilter').onchange = list;
+      $('#staffFilter').onchange = list; $$('[data-sview]').forEach(b => b.onclick = () => { staffView = b.dataset.sview; $$('[data-sview]').forEach(x => x.classList.toggle('active', x === b)); list(); }); $('#staffStatus').onchange = list; $('#staffSearch').oninput = list;
       bindStaffImport(ctx, () => { list(); log(); });
       await loadStaff(ctx); list(); log();
+      if (!(ctx.cache.staff || []).length && $('#staffOne')) $('#staffOne').open = true;
     },
   };
 
