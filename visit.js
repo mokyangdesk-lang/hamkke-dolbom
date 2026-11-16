@@ -1,7 +1,7 @@
 /* 함께 돌봄 5.0 — 심방 사역 화면: 오늘 할 일, 교구 성도, 문자 보내기, 주일 보고(사역자 승인 / 교구 목사 열람). */
 (function (root) {
   'use strict';
-  const { $, $$, esc, toast, dialog, closeDialog, ask, copyText } = root.UI;
+  const { $, $$, esc, toast, dialog, closeDialog, ask, copyText, matches, liveSearch } = root.UI;
   const C = root.MinistryCore, K = root.CareCore, M = root.Messages, store = root.HamkkeStore;
   const Pages = root.HamkkePages = root.HamkkePages || {};
   const uid = () => (root.crypto?.randomUUID ? root.crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
@@ -82,7 +82,7 @@
       const s = ctx.state;
       let list = K.carePeople(s);
       if (peopleFilter === 'long') { const ids = new Set(K.longNoContact(s).map(x => x.p.id)); list = list.filter(p => ids.has(p.id)); }
-      if (peopleSearch) list = list.filter(p => [p.name, p.phone].some(v => String(v || '').includes(peopleSearch)));
+      if (peopleSearch) list = list.filter(p => matches(p, peopleSearch));
       list.sort((a, b) => String(a.name).localeCompare(b.name, 'ko'));
       return `<div class="eyebrow">심방</div><h1 class="page-title">${esc(ctx.me.district)} 성도</h1>
       <p class="subtitle">같은 교구 심방사역자와 명단을 함께 봅니다. 누가 언제 연락했는지 보고 겹치지 않게 연락하세요.</p>
@@ -93,7 +93,7 @@
     bind(ctx) {
       bindRows(ctx);
       $$('[data-f]').forEach(b => b.onclick = () => { peopleFilter = b.dataset.f; ctx.render(); });
-      const q = $('#peopleSearch'); q.onchange = () => { peopleSearch = q.value.trim(); ctx.render(); };
+      liveSearch('peopleSearch', v => { peopleSearch = v; }, ctx.render);
     },
   };
 
@@ -125,8 +125,10 @@
         <ol class="flow steps">${steps.map((t, i) => `<li class="${i + 1 === flow.step ? 'now' : i + 1 < flow.step ? 'done' : ''}">${t}</li>`).join('')}</ol>`;
       if (flow.step === 1) {
         const quick = min === 'new' ? [['nc-active', '진행 중'], ['nc-absent', '교육 빠진 분'], ['nc-waiting', '매칭 대기'], ['nc-fellowship', '새사귐 중']] : [['all', '교구 전체'], ['bday', '7일 안 생일'], ['due', '다시 연락할 분'], ['long', '오래 연락 못 한 분']];
-        return head + (ctx.me.role === 'admin' ? `<div class="seg" role="group" aria-label="사역">${[['visit', '심방 (교구 성도)'], ['new', '새가족']].map(([k, l]) => `<button type="button" data-min="${k}" class="${min === k ? 'active' : ''}">${l}</button>`).join('')}</div>` : '') + `<section class="card"><h2>누구에게 보낼까요?</h2><div class="acts">${quick.map(([k, l]) => `<button type="button" data-quick="${k}">${l} 고르기</button>`).join('')}<button type="button" data-quick="clear" class="quiet">모두 해제</button></div>
-          <div class="list" style="margin-top:12px">${people.map(p => `<label class="row pick"><input type="checkbox" name="to" value="${esc(p.id)}" ${flow.ids.includes(p.id) ? 'checked' : ''} ${p.phone ? '' : 'disabled'}><span class="grow"><b>${esc(p.name)}</b> <span class="muted small">${p.phone ? esc(p.phone) : '전화번호 없음'}</span></span></label>`).join('')}</div>
+        return head + (ctx.me.role === 'admin' ? `<div class="seg" role="group" aria-label="사역">${[['visit', '심방 (교구 성도)'], ['new', '새가족']].map(([k, l]) => `<button type="button" data-min="${k}" class="${min === k ? 'active' : ''}">${l}</button>`).join('')}</div>` : '') + `<section class="card"><h2>누구에게 보낼까요?</h2>
+          <div class="filters"><input id="msgSearch" type="search" placeholder="이름 · 전화번호로 찾기" value="${esc(flow.q || '')}" aria-label="받는 분 찾기" autocomplete="off"></div><div class="acts">${quick.map(([k, l]) => `<button type="button" data-quick="${k}">${l} 고르기</button>`).join('')}<button type="button" data-quick="shown" id="pickShown" ${flow.q ? '' : 'hidden'}>찾은 분 모두 고르기</button><button type="button" data-quick="clear" class="quiet">모두 해제</button></div>
+          <p class="muted small" id="msgFound" ${flow.q ? '' : 'hidden'}></p>
+          <div class="list" style="margin-top:12px">${people.map(p => `<label class="row pick" data-who="${esc([p.name, p.phone, p.id].join(' '))}"><input type="checkbox" name="to" value="${esc(p.id)}" ${flow.ids.includes(p.id) ? 'checked' : ''} ${p.phone ? '' : 'disabled'}><span class="grow"><b>${esc(p.name)}</b> <span class="muted small">${p.phone ? esc(p.phone) : '전화번호 없음'}</span></span></label>`).join('')}</div>
           <div class="acts sticky-acts"><button type="button" class="primary" id="toStep2">다음: 어떤 문자 (${flow.ids.length}명)</button></div></section>`;
       }
       if (flow.step === 2) return head + `<section class="card"><h2>${chosen.length}명에게 보낼 문자</h2><div class="tpl-grid">${tpls.map(t => `<button type="button" data-tpl="${t.key}" class="${flow.tpl === t.key ? 'active' : ''}"><b>${esc(t.label)}</b><span class="small muted">${esc(t.text.slice(0, 40))}…</span></button>`).join('')}</div>
@@ -149,9 +151,18 @@
     },
     bind(ctx) {
       const s = ctx.state;
+      // 받는 분 찾기: 다시 그리지 않고 줄만 숨겨서, 이미 고른 분은 그대로 체크되어 있습니다.
+      const ms = $('#msgSearch');
+      const filterRows = () => {
+        flow.q = ms.value.trim(); let n = 0;
+        $$('label.row.pick').forEach(r => { const id = r.querySelector('input').value, p = s.people.find(x => x.id === id), ok = matches(p, flow.q); r.hidden = !ok; if (ok) n++; });
+        const f = $('#msgFound'); f.hidden = !flow.q; f.textContent = `찾은 분 ${n}명`; $('#pickShown').hidden = !flow.q || !n;
+      };
+      if (ms) { ms.oninput = filterRows; ms.addEventListener('keydown', e => { if (e.key === 'Enter') e.preventDefault(); }); if (flow.q) filterRows(); }
       $$('input[name=to]').forEach(c => c.onchange = () => { flow.ids = $$('input[name=to]:checked').map(x => x.value); $('#toStep2').textContent = `다음: 어떤 문자 (${flow.ids.length}명)`; });
       $$('[data-quick]').forEach(b => b.onclick = () => {
         const k = b.dataset.quick, has = p => p.phone, N = root.NewcomerCore;
+        if (k === 'shown') { flow.ids = [...new Set([...flow.ids, ...$$('label.row.pick:not([hidden]) input[name=to]:not(:disabled)').map(x => x.value)])]; return ctx.render(); }
         const pick = k === 'nc-absent' ? missedEducation(s) : k.startsWith('nc-') ? N.newcomers(s).filter(p => { const bk = N.bucket(s, p); return k === 'nc-active' ? !['settled', 'paused'].includes(bk) : bk === k.slice(3); })
           : k === 'all' ? K.carePeople(s) : k === 'bday' ? K.carePeople(s).filter(p => { const d = C.birthdayDistance(p, today()); return d !== null && d >= 0 && d <= 7; })
           : k === 'due' ? K.dueRecontacts(s).map(x => x.p) : k === 'long' ? K.longNoContact(s).map(x => x.p) : [];

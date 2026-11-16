@@ -2,7 +2,7 @@
    4과목 출석, 한 명 등록, 교구 인계, 새가족 주간 보고(위원 승인 / 목사 열람). 권한은 서버가 다시 판정합니다. */
 (function (root) {
   'use strict';
-  const { $, $$, esc, toast, dialog, closeDialog, ask } = root.UI;
+  const { $, $$, esc, toast, dialog, closeDialog, ask, matches, liveSearch } = root.UI;
   const C = root.MinistryCore, K = root.CareCore, N = root.NewcomerCore, M = root.Messages;
   const Pages = root.HamkkePages = root.HamkkePages || {};
   const uid = () => (root.crypto?.randomUUID ? root.crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
@@ -61,7 +61,7 @@
       if (boardFilter === 'late') list = list.filter(p => !['settled', 'paused'].includes(N.bucket(s, p)) && isLate(s, p));
       else if (boardFilter !== 'all') list = list.filter(p => { const b = N.bucket(s, p); return boardFilter === 'active' ? !['settled', 'paused'].includes(b) : b === boardFilter; });
       if (onlyRequests) list = list.filter(p => reqIds.has(p.id));
-      if (boardSearch) list = list.filter(p => [p.name, p.phone].some(v => String(v || '').includes(boardSearch)));
+      if (boardSearch) list = list.filter(p => matches(p, boardSearch));
       list.sort((a, b) => String(a.registeredAt || '').localeCompare(String(b.registeredAt || '')) || String(a.name).localeCompare(b.name, 'ko'));
       const districts = [...new Set(N.newcomers(s).map(p => p.district))].sort((a, b) => a.localeCompare(b, 'ko'));
       const filters = [['active', '진행 중', c.active], ['late', '확인일 지남', late], ['waiting', '매칭 대기', c.waiting], ['fellowship', '새사귐 중', c.fellowship], ['settled', '정착·인계 대기', c.settled], ['paused', '중단', c.paused], ['all', '전체', c.all]];
@@ -78,7 +78,7 @@
     },
     bind(ctx) {
       $$('[data-bf]').forEach(b => b.onclick = () => { boardFilter = b.dataset.bf; ctx.render(); });
-      const q = $('#boardSearch'); q.onchange = () => { boardSearch = q.value.trim(); ctx.render(); };
+      liveSearch('boardSearch', v => { boardSearch = v; }, ctx.render);
       const d = $('#boardDistrict'); if (d) d.onchange = () => { boardDistrict = d.value; ctx.render(); };
       const r = $('#reqBtn'); if (r) r.onclick = () => { onlyRequests = !onlyRequests; ctx.render(); };
       const add = $('#ncAdd'); if (add) add.onclick = () => { const dt = $('details.card.more'); dt.open = true; dt.scrollIntoView({ block: 'center' }); dt.querySelector('input[name=name]')?.focus(); };

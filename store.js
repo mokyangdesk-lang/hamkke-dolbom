@@ -172,16 +172,32 @@
     }
     return changes.length;
   }
+  // 관리자 비밀번호 바꾸기: 지금 비밀번호로 다시 로그인해 본인을 확인한 뒤 새 비밀번호로 바꿉니다.
+  async function changePassword(current, next) {
+    const email = session.user?.email;
+    if (!email) throw Error('이메일로 로그인한 관리자만 비밀번호를 바꿀 수 있습니다.');
+    let x;
+    try { x = await request('/auth/v1/token?grant_type=password', { method: 'POST', body: JSON.stringify({ email, password: current }) }, true); }
+    catch (e) { if (e.status === 400) throw Error('지금 비밀번호가 맞지 않습니다.'); throw e; }
+    remember({ ...x, displayName: session.displayName || '관리자' });
+    try { await request('/auth/v1/user', { method: 'PUT', body: JSON.stringify({ password: next }) }); }
+    catch (e) {
+      const m = String(e.message || '');
+      if (/different from the old|same_password/i.test(m)) throw Error('지금 비밀번호와 다른 비밀번호를 넣어 주세요.');
+      if (/weak|at least|characters|pwned|leaked/i.test(m)) throw Error('비밀번호가 너무 짧거나 쉽습니다. 더 길고 다른 사람이 짐작하기 어렵게 만들어 주세요. (' + m + ')');
+      throw e;
+    }
+  }
   const staff = body => request('/functions/v1/staff-gateway', { method: 'POST', body: JSON.stringify({ churchId: server().churchId, ...body }) });
   const staffList = () => request('/rest/v1/staff_accounts?church_id=eq.' + encodeURIComponent(server().churchId) + '&select=user_id,display_name,role,district,status,code_issued_at,phone&order=created_at.desc');
   const auditLog = () => request('/rest/v1/staff_audit?church_id=eq.' + encodeURIComponent(server().churchId) + '&select=at,action,target&order=at.desc&limit=30');
 
   const status = () => ({
     signedIn: !!session.access_token, role: member?.role || null, district: member?.district || '',
-    userId: session.user?.id || member?.user_id || null, name: session.displayName || '', churchId: server().churchId || null,
+    userId: session.user?.id || member?.user_id || null, name: session.displayName || '', email: session.user?.email || '', churchId: server().churchId || null,
     builtInServer: !!server().builtIn, hasServer: hasServer(), busy,
   });
 
-  global.HamkkeStore = { KINDS, empty, server, setServer, hasServer, codeLogin, emailLogin, signOut, load, save, diff, remove, restore, staff, staffList, auditLog, status, loadMember, request,
+  global.HamkkeStore = { KINDS, empty, server, setServer, hasServer, codeLogin, emailLogin, signOut, changePassword, load, save, diff, remove, restore, staff, staffList, auditLog, status, loadMember, request,
     on(fn) { listeners.add(fn); return () => listeners.delete(fn); } };
 })(typeof window !== 'undefined' ? window : globalThis);

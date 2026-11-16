@@ -36,5 +36,26 @@
     try { await root.navigator.clipboard.writeText(text); toast('복사했습니다.'); }
     catch (_) { const el = btn?.closest('.code-box')?.querySelector('.code'); if (el && root.getSelection) { const r = doc().createRange(); r.selectNodeContents(el); const s = root.getSelection(); s.removeAllRanges(); s.addRange(r); } toast('복사가 막혀 있습니다. 코드를 눌러 선택한 뒤 직접 복사해 주세요.'); }
   }
-  root.UI = { $, $$, esc, ROLE, MINISTRY, CREDIT, toast, dialog, closeDialog, ask, formatCode, copyText };
+  // 찾기: 이름(띄어쓰기 무시) 또는 전화번호 숫자(3자리 이상, 하이픈 무시)·ID가 들어 있으면 맞는 것으로 봅니다.
+  const norm = v => String(v ?? '').normalize('NFC').replace(/\s+/g, '').toLowerCase();
+  function matches(p, q) {
+    const k = norm(q); if (!k) return true;
+    if (norm(p?.name).includes(k) || norm(p?.id).includes(k)) return true;
+    const d = k.replace(/\D/g, '');
+    return d.length >= 3 && d.length === k.replace(/-/g, '').length && String(p?.phone || '').replace(/\D/g, '').includes(d);
+  }
+  // 입력하는 대로 찾기: 잠깐 멈추면 화면을 다시 그리고 입력 칸에 커서를 돌려놓습니다.
+  // 한글 조합 중(ㄱ→가→각)에는 다시 그리지 않아 글자가 끊기지 않습니다.
+  function liveSearch(id, apply, render) {
+    const q = $('#' + id); if (!q) return;
+    let timer = null;
+    const run = () => { clearTimeout(timer); timer = setTimeout(() => {
+      apply(q.value.trim()); render();
+      const n = $('#' + id); if (n) { n.focus(); const L = n.value.length; try { n.setSelectionRange(L, L); } catch (_) { } }
+    }, 300); };
+    q.addEventListener('input', e => { if (!e.isComposing) run(); });
+    q.addEventListener('compositionend', run);
+    q.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); clearTimeout(timer); apply(q.value.trim()); render(); const n = $('#' + id); if (n) n.focus(); } });
+  }
+  root.UI = { $, $$, esc, ROLE, MINISTRY, CREDIT, toast, dialog, closeDialog, ask, formatCode, copyText, matches, liveSearch };
 })(typeof window !== 'undefined' ? window : globalThis);

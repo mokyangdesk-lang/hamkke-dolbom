@@ -2,7 +2,7 @@
    어떤 계정이 무엇을 할 수 있는지는 서버가 다시 판정합니다. */
 (function (root) {
   'use strict';
-  const { $, $$, esc, ROLE, toast, dialog, closeDialog, ask, copyText } = root.UI;
+  const { $, $$, esc, ROLE, toast, dialog, closeDialog, ask, copyText, matches, liveSearch } = root.UI;
   const store = root.HamkkeStore, C = root.MinistryCore;
   const Pages = root.HamkkePages = root.HamkkePages || {};
   const ISSUABLE = ['visitor', 'committee', 'district_pastor', 'newcomer_admin', 'newcomer_pastor'];
@@ -268,7 +268,7 @@
     render(ctx) {
       const s = ctx.state, N = root.NewcomerCore, g = C.groups(s);
       const all = s.people.filter(p => rosterKind === 'new' ? p.newcomer : !p.newcomer);
-      let list = all.filter(p => (!rosterDistrict || p.district === rosterDistrict) && (!rosterSearch || [p.name, p.phone, p.id].some(v => String(v || '').includes(rosterSearch))));
+      let list = all.filter(p => (!rosterDistrict || p.district === rosterDistrict) && (!rosterSearch || matches(p, rosterSearch)));
       list.sort((a, b) => String(a.district).localeCompare(String(b.district), 'ko', { numeric: true }) || String(a.name).localeCompare(b.name, 'ko'));
       const count = d => all.filter(p => p.district === d).length;
       const nextOf = p => { const st = N ? N.nextStage(N.stages(s, p)) : null; return st ? st.label : '정착 · 인계 대기'; };
@@ -285,7 +285,7 @@
     bind(ctx) {
       $$('[data-rk]').forEach(b => b.onclick = () => { rosterKind = b.dataset.rk; ctx.render(); });
       $('#rosterDistrict').onchange = e => { rosterDistrict = e.target.value; ctx.render(); };
-      const q = $('#rosterSearch'); q.onchange = () => { rosterSearch = q.value.trim(); ctx.render(); };
+      liveSearch('rosterSearch', v => { rosterSearch = v; }, ctx.render);
     },
   };
 
@@ -413,12 +413,13 @@
         <div class="acts" style="margin-top:16px"><button type="button" id="themeReset" class="quiet" ${changed ? '' : 'disabled'}>되돌리기</button><button type="button" id="themeSave" class="primary" ${changed ? '' : 'disabled'}>모두에게 적용(저장)</button></div></section>`;
     },
     bind(ctx) {
+      // 테마는 <html data-palette data-mode …>에도 붙어 있으므로 버튼만 고릅니다(그렇지 않으면 페이지 어디를 눌러도 다시 그려짐).
       const T = root.HamkkeTheme, saved = T.fromState(ctx.state);
       const pick = patch => { themeDraft = T.normalize({ ...(themeDraft || saved), ...patch }); T.apply(themeDraft, false); ctx.render(); };
-      $$('[data-palette]').forEach(b => b.onclick = () => pick({ palette: b.dataset.palette }));
-      $$('[data-font]').forEach(b => b.onclick = () => pick({ font: b.dataset.font }));
-      $$('[data-size]').forEach(b => b.onclick = () => pick({ size: b.dataset.size }));
-      $$('[data-mode]').forEach(b => b.onclick = () => pick({ mode: b.dataset.mode }));
+      $$('button[data-palette]').forEach(b => b.onclick = () => pick({ palette: b.dataset.palette }));
+      $$('button[data-font]').forEach(b => b.onclick = () => pick({ font: b.dataset.font }));
+      $$('button[data-size]').forEach(b => b.onclick = () => pick({ size: b.dataset.size }));
+      $$('button[data-mode]').forEach(b => b.onclick = () => pick({ mode: b.dataset.mode }));
       $('#themeReset').onclick = () => { themeDraft = null; T.apply(saved); ctx.render(); };
       $('#themeSave').onclick = async () => {
         const t = themeDraft;
@@ -451,7 +452,7 @@
     label: '자료 관리',
     render(ctx) {
       const s = ctx.state, n = k => (s[k] || []).length;
-      const found = dataSearch ? s.people.filter(p => [p.name, p.phone, p.id].some(v => String(v || '').includes(dataSearch))).slice(0, 20) : [];
+      const found = dataSearch ? s.people.filter(p => matches(p, dataSearch)).slice(0, 20) : [];
       return `<div class="eyebrow">관리</div><h1 class="page-title">자료 관리</h1>
       <p class="subtitle">서버에 있는 교회 자료를 내려받거나 정리합니다. 지우는 일은 되돌릴 수 없으니, 먼저 백업을 받아 두세요.</p>
       <div class="stats"><div class="stat"><b>${s.people.filter(p => !p.newcomer).length}</b>성도</div><div class="stat"><b>${s.people.filter(p => p.newcomer).length}</b>새가족</div><div class="stat"><b>${n('mentors')}</b>양육도우미</div><div class="stat"><b>${n('visits')}</b>연락 기록</div><div class="stat"><b>${n('reports')}</b>보고서</div></div>
@@ -470,7 +471,7 @@
     bind(ctx) {
       $('#bkJson').onclick = () => { const n = backupJSON(ctx.state); toast(`${n}건을 백업 파일로 받았습니다.`); };
       $('#bkXlsx').onclick = () => { try { backupExcel(ctx.state); } catch (e) { toast('엑셀을 만들지 못했습니다: ' + e.message); } };
-      const q = $('#dataSearch'); q.onchange = () => { dataSearch = q.value.trim(); ctx.render(); };
+      liveSearch('dataSearch', v => { dataSearch = v; }, ctx.render);
       $$('[data-del]').forEach(b => b.onclick = async () => {
         const s = ctx.state, p = s.people.find(x => x.id === b.dataset.del);
         const rel = RELATED.flatMap(k => (s[k] || []).filter(r => r.personId === p.id || (k === 'progress' && r.id === p.id)).map(r => ({ kind: k, id: r.id })));
@@ -493,6 +494,47 @@
       const r = $('#doRestore'); if (r) r.onclick = async () => {
         if (!await ask('백업에서 다시 넣기', '지금 서버에 없는 기록만 다시 넣습니다. 이미 있는 기록은 그대로 둡니다.', '다시 넣기')) return;
         try { const n = await store.restore(restoreFile.records); restoreFile = null; toast(`${n}건을 다시 넣었습니다.`); await ctx.refresh(true); } catch (e) { toast(e.message); }
+      };
+    },
+  };
+
+  // ── 내 계정(전체 관리자): 비밀번호 바꾸기 + 이메일 변경·관리자 추가 안내
+  Pages.account = {
+    label: '내 계정',
+    render(ctx) {
+      const st = root.HamkkeStore.status(), email = st.email || '';
+      return `<div class="eyebrow">관리</div><h1 class="page-title">내 계정</h1>
+      <p class="subtitle">전체 관리자가 이메일로 로그인할 때 쓰는 계정입니다.</p>
+      <section class="card"><h2>로그인 이메일</h2><p><b>${esc(email || '이메일 정보 없음')}</b></p>
+        <p class="muted small">이메일 주소를 바꾸거나 전체 관리자를 더 등록하는 일은 Supabase 관리 화면에서 합니다. 방법은 아래 "이메일 바꾸기 · 관리자 추가"를 펼쳐 보세요.</p></section>
+      <section class="card"><h2>비밀번호 바꾸기</h2>
+        ${email ? `<form id="pwForm" class="stack" autocomplete="on">
+          <input type="email" name="username" value="${esc(email)}" autocomplete="username" hidden>
+          <label>지금 비밀번호<input name="current" type="password" autocomplete="current-password" required></label>
+          <label>새 비밀번호 <span class="muted small">(10자 이상 권장 · 다른 곳에서 쓰지 않는 것)</span><input name="next" type="password" autocomplete="new-password" minlength="8" required></label>
+          <label>새 비밀번호 한 번 더<input name="again" type="password" autocomplete="new-password" minlength="8" required></label>
+          <div class="acts"><button class="primary" id="pwSave">비밀번호 바꾸기</button></div>
+          <p class="muted small">바꾼 뒤에도 이 기기는 로그인된 채로 있습니다. 다른 기기에서는 새 비밀번호로 다시 로그인해야 할 수 있습니다.</p></form>`
+        : '<p class="muted">이메일로 로그인한 경우에만 여기서 비밀번호를 바꿀 수 있습니다.</p>'}</section>
+      <section class="card"><details><summary><b>이메일 바꾸기 · 관리자 추가 (Supabase에서)</b></summary>
+        <ol class="small">
+          <li>supabase.com에 로그인 → 교회 프로젝트 → <b>Authentication → Users → Add user → Create new user</b>. 새 이메일과 비밀번호를 넣고 <b>Auto Confirm User</b>를 켠 뒤 만듭니다.</li>
+          <li><b>SQL Editor</b>에서 새 계정을 이 교회의 전체 관리자로 등록합니다(아래 안내 페이지의 SQL을 그대로 붙여 넣고 이메일만 바꿈).</li>
+          <li>로그아웃 → 관리자 주소(?for=admin)에서 새 이메일로 로그인해 관리 화면이 열리는지 확인합니다.</li>
+          <li>이메일을 <b>바꾸는</b> 경우라면, 새 계정이 잘 되는 것을 확인한 뒤 옛 계정을 SQL로 관리자에서 빼고 Users에서 지웁니다.</li>
+        </ol></details></section>`;
+    },
+    bind(ctx) {
+      const f = $('#pwForm'); if (!f) return;
+      f.onsubmit = async e => {
+        e.preventDefault(); const d = new FormData(f), cur = String(d.get('current')), next = String(d.get('next')), again = String(d.get('again'));
+        if (next.length < 8) return toast('새 비밀번호는 8자 이상이어야 합니다.');
+        if (next !== again) return toast('새 비밀번호 두 칸이 서로 다릅니다.');
+        if (next === cur) return toast('지금 비밀번호와 다른 비밀번호를 넣어 주세요.');
+        const btn = $('#pwSave'); btn.disabled = true; btn.textContent = '바꾸는 중…';
+        try { await root.HamkkeStore.changePassword(cur, next); f.reset(); toast('비밀번호를 바꾸었습니다. 다음 로그인부터 새 비밀번호를 쓰세요.'); }
+        catch (err) { toast(err.message); }
+        finally { btn.disabled = false; btn.textContent = '비밀번호 바꾸기'; }
       };
     },
   };

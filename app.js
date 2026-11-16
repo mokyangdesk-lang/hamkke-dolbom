@@ -28,7 +28,7 @@
     { key: 'new', label: '새가족', hint: '현황 · 교육 · 매칭 · 인계', items: [['board', '단계별 진행 · 다음 할 일'], ['attendance', '새가족교육 4과목 출석'], ['matching', '4과목 마친 분과 양육도우미 잇기'], ['handover', '정착한 분을 교구로 인계'], ['nreports', '새가족위원 주간 보고 보기']] },
     { key: 'visit', label: '심방', hint: '교구별 할 일 · 성도 · 보고', items: [['today', '교구를 골라 오늘 할 일'], ['people', '교구 성도 · 연락 기록'], ['assign', '교구별 심방사역자와 성도 현황'], ['reports', '심방사역자 주간 보고 보기']] },
     { key: 'sms', label: '문자', hint: '보내기 · 예문', items: [['message', '받는 사람 → 예문 → 문자 앱'], ['templates', '교회 공통 예문 · 기준 일수']] },
-    { key: 'set', label: '설정', hint: '화면 · 자료 백업', items: [['theme', '색 · 글꼴 · 밝기 · 글자 크기'], ['data', '백업 · 한 분 지우기 · 초기화 · 되살리기']] },
+    { key: 'set', label: '설정', hint: '화면 · 자료 백업 · 내 계정', items: [['theme', '색 · 글꼴 · 밝기 · 글자 크기'], ['data', '백업 · 한 분 지우기 · 초기화 · 되살리기'], ['account', '로그인 이메일 · 비밀번호 바꾸기 · 관리자 추가 안내']] },
   ];
   NAV.admin = ADMIN_AREAS.flatMap(a => a.items.map(([id]) => id));
   const areaOf = id => ADMIN_AREAS.find(a => a.items.some(([x]) => x === id));
