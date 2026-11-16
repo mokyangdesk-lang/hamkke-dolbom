@@ -46,6 +46,122 @@
     $('#codeDone', body).onclick = closeDialog;
   }
 
+  // ── 담당자 엑셀 등록: 이름 · 역할 · 교구 · 휴대전화
+  const STAFF_SHEET = '담당자명단', STAFF_HEAD = ['이름', '역할', '교구', '휴대전화'];
+  const ROLE_ALIAS = {
+    심방사역자: 'visitor', 심방: 'visitor', 새가족위원: 'committee', 새가족위원회: 'committee',
+    교구목사: 'district_pastor', 목사: 'district_pastor', 교구담당목사: 'district_pastor', 전도사: 'district_pastor', 교구전도사: 'district_pastor',
+    새가족관리자: 'newcomer_admin', 새가족팀: 'newcomer_admin', 새가족담당목사: 'newcomer_pastor', 새가족목사: 'newcomer_pastor',
+  };
+  const roleOf = v => { const k = String(v || '').replace(/\s+/g, ''); return ISSUABLE.find(r => ROLE[r].replace(/\s+/g, '') === k) || ROLE_ALIAS[k] || ''; };
+  const ROLE_ORDER = r => ISSUABLE.indexOf(r);
+  let staffImport = null, staffDone = null; // 미리 보기 / 발급 결과(코드는 이 화면에서만 보임)
+  function downloadStaffTemplate(ctx) {
+    const X = root.XLSX, book = X.utils.book_new(), d = C.groups(ctx.state).map(x => x.name);
+    X.utils.book_append_sheet(book, X.utils.aoa_to_sheet([STAFF_HEAD, ['홍길동', '심방사역자', d[0] || '1교구', '010-0000-0000'], ['김은혜', '새가족위원', d[0] || '1교구', ''], ['이목자', '교구 목사', d[0] || '1교구', ''], ['박새봄', '새가족 관리자', '', '']]), STAFF_SHEET);
+    X.utils.book_append_sheet(book, X.utils.aoa_to_sheet([['항목', '안내'],
+      ['이름', '본인이 로그인할 때 쓰는 이름입니다. 띄어쓰기까지 본인에게 그대로 알려 주세요.'],
+      ['역할', '심방사역자 · 새가족위원 · 교구 목사 · 새가족 관리자 · 새가족 담당 목사 (목사·교구목사는 교구 목사로 등록)'],
+      ['교구', `심방사역자·새가족위원·교구 목사는 꼭 적습니다(${d.join(', ')}). 새가족 관리자·새가족 담당 목사는 비워 둡니다(모든 교구의 새가족을 봄).`],
+      ['휴대전화', '선택. 적어 두면 발급 후 코드를 바로 문자로 보낼 수 있습니다.'],
+      ['예시 줄', '2~5행의 예시는 지우고 적어 주세요.'],
+      ['이미 등록된 분', '이름·역할·교구가 같은 담당자가 이미 있으면 건너뜁니다(코드를 새로 만들지 않음).']]), '작성안내');
+    X.writeFile(book, '함께돌봄-담당자-양식.xlsx');
+  }
+  // 엑셀 → 등록할 담당자 목록(검사 포함)
+  function parseStaff(book, ctx) {
+    const X = root.XLSX, known = C.groups(ctx.state).map(x => x.name), existing = ctx.cache.staff || [];
+    const name = book.SheetNames.find(n => n === STAFF_SHEET) || book.SheetNames.find(n => { const h = (X.utils.sheet_to_json(book.Sheets[n], { header: 1 })[0] || []).map(x => String(x).trim()); return h.includes('이름') && h.includes('역할'); });
+    if (!name) return { items: [], errors: ['"이름"과 "역할" 열이 있는 시트를 찾지 못했습니다. 담당자 양식을 받아 그대로 써 주세요.'], warnings: [], skipped: [] };
+    const rows = X.utils.sheet_to_json(book.Sheets[name], { defval: '', raw: false });
+    const items = [], errors = [], warnings = [], skipped = [], seen = new Set();
+    rows.forEach((r, i) => {
+      const line = `${i + 2}행`, nm = String(r['이름'] || '').replace(/\s+/g, ' ').trim(), rawRole = String(r['역할'] || '').trim();
+      if (!nm && !rawRole && !String(r['교구'] || '').trim()) return;
+      if (['홍길동', '김은혜', '이목자', '박새봄'].includes(nm) && String(r['휴대전화'] || '').includes('0000-0000')) return; // 양식 예시 줄
+      const role = roleOf(rawRole), phone = String(r['휴대전화'] || '').trim();
+      let district = NEEDS_DISTRICT.includes(role) ? C.matchDistrict(String(r['교구'] || '').trim(), known) : '';
+      if (!nm) return errors.push(`${line}: 이름이 비어 있습니다.`);
+      if (!role) return errors.push(`${line} ${nm}: 역할 "${rawRole}"을(를) 알 수 없습니다. 심방사역자 · 새가족위원 · 교구 목사 · 새가족 관리자 · 새가족 담당 목사 중에서 적어 주세요.`);
+      if (NEEDS_DISTRICT.includes(role) && !district) return errors.push(`${line} ${nm}: ${ROLE[role]}는 교구가 필요합니다.`);
+      if (district && known.length && !known.includes(district)) return errors.push(`${line} ${nm}: "${district}"는 등록된 교구가 아닙니다(${known.join(', ')}).`);
+      if (phone && phone.replace(/\D/g, '').length < 9) warnings.push(`${line} ${nm}: 휴대전화 "${phone}"가 짧습니다. 문자 보내기가 안 될 수 있습니다.`);
+      const key = nm.replace(/\s+/g, '') + '|' + role + '|' + district;
+      if (seen.has(key)) return errors.push(`${line} ${nm}: 같은 이름·역할·교구가 파일에 두 번 있습니다.`);
+      seen.add(key);
+      const dup = existing.find(s => s.display_name.replace(/\s+/g, '') === nm.replace(/\s+/g, '') && s.role === role && (s.district || '') === district);
+      if (dup) return skipped.push(`${nm} (${ROLE[role]}${district ? ' · ' + district : ''}) — 이미 등록되어 있어 건너뜁니다.`);
+      const same = existing.find(s => s.display_name.replace(/\s+/g, '') === nm.replace(/\s+/g, ''));
+      if (same) warnings.push(`${line} ${nm}: 같은 이름의 담당자(${ROLE[same.role] || same.role}${same.district ? ' · ' + same.district : ''})가 이미 있습니다. 동명이인이면 그대로 등록됩니다.`);
+      items.push({ name: nm, role, district, phone });
+    });
+    items.sort((a, b) => String(a.district).localeCompare(String(b.district), 'ko', { numeric: true }) || ROLE_ORDER(a.role) - ROLE_ORDER(b.role) || a.name.localeCompare(b.name, 'ko'));
+    return { items, errors, warnings, skipped, sheet: name };
+  }
+  function staffImportHTML() {
+    const p = staffImport, d = staffDone;
+    const roleCount = list => ISSUABLE.map(r => [r, list.filter(x => x.role === r).length]).filter(x => x[1]).map(([r, n]) => `${esc(ROLE[r])} <b>${n}</b>`).join(' · ');
+    let h = `<section class="card" id="staffBulk"><h2>엑셀로 여러 명 등록</h2>
+      <p class="muted small">목회자 · 심방사역자 · 새가족위원 · 새가족팀을 한꺼번에 등록하고 코드를 발급합니다. 열은 <b>이름 · 역할 · 교구 · 휴대전화</b>입니다.</p>
+      <div class="acts"><button type="button" class="quiet" id="staffTpl">담당자 양식 받기</button><label class="button primary">담당자 엑셀 올리기<input type="file" id="staffFile" accept=".xlsx,.xls,.csv" hidden></label></div>`;
+    if (p && !d) {
+      h += `<h3>미리 보기 ${p.sheet ? '· ' + esc(p.sheet) + ' 시트' : ''}</h3>
+        <div class="stats"><div class="stat"><b>${p.items.length}</b>새로 등록</div><div class="stat"><b>${p.skipped.length}</b>이미 등록(건너뜀)</div><div class="stat ${p.errors.length ? 'bad' : ''}"><b>${p.errors.length}</b>고칠 것</div></div>
+        ${p.items.length ? `<p>${roleCount(p.items)}</p><div class="table-wrap"><table><thead><tr><th>교구</th><th>역할</th><th>이름</th><th>휴대전화</th></tr></thead><tbody>${p.items.map(x => `<tr><td>${esc(x.district || '모든 교구(새가족)')}</td><td>${esc(ROLE[x.role])}</td><td><b>${esc(x.name)}</b></td><td>${esc(x.phone || '-')}</td></tr>`).join('')}</tbody></table></div>` : ''}
+        ${p.errors.length ? `<h3>고쳐야 할 것</h3><ul class="error-list">${p.errors.map(e => `<li>${esc(e)}</li>`).join('')}</ul><p class="muted small">엑셀을 고친 뒤 다시 올려 주세요. 고칠 것이 있으면 등록하지 않습니다.</p>` : ''}
+        ${p.warnings.length ? `<h3>확인해 주세요</h3><ul class="warn-list">${p.warnings.map(e => `<li>${esc(e)}</li>`).join('')}</ul>` : ''}
+        ${p.skipped.length ? `<details><summary>건너뛰는 분 ${p.skipped.length}명</summary><ul class="small">${p.skipped.map(e => `<li>${esc(e)}</li>`).join('')}</ul></details>` : ''}
+        <div class="acts"><button type="button" class="primary" id="staffGo" ${p.errors.length || !p.items.length ? 'disabled' : ''}>${p.items.length}명 등록하고 코드 발급</button><button type="button" class="quiet" id="staffCancel">취소</button></div>
+        <p id="staffProgress" class="muted small" aria-live="polite"></p>`;
+    }
+    if (d) {
+      const ok = d.filter(x => x.code), bad = d.filter(x => !x.code);
+      h += `<h3>발급 결과 · ${ok.length}명 완료${bad.length ? ` · <span class="danger">${bad.length}명 실패</span>` : ''}</h3>
+        <p class="notice"><b>코드는 이 결과를 닫거나 새로고침하면 다시 볼 수 없습니다.</b> "코드 목록 엑셀로 받기"로 저장해 두거나 지금 문자로 보내 주세요. 받은 파일은 코드가 들어 있으니 다른 사람과 나누지 마세요.</p>
+        <div class="acts"><button type="button" class="primary" id="staffCodes">코드 목록 엑셀로 받기</button><button type="button" class="quiet" id="staffClose">다 전달했습니다 · 닫기</button></div>
+        <div class="table-wrap"><table><thead><tr><th>교구</th><th>역할</th><th>이름</th><th>코드</th><th></th></tr></thead><tbody>${d.map((x, i) => `<tr><td>${esc(x.district || '모든 교구(새가족)')}</td><td>${esc(ROLE[x.role])}</td><td><b>${esc(x.name)}</b></td>
+          <td>${x.code ? `<span class="code">${esc(x.code)}</span>` : `<span class="danger small">${esc(x.error || '실패')}</span>`}</td>
+          <td>${x.code ? (x.phone ? `<a class="button" href="${esc(root.Messages.smsHref(x.phone, codeMessage(x.name, x.role, x.code)))}">문자</a>` : `<button type="button" data-copycode="${i}">안내문 복사</button>`) : ''}</td></tr>`).join('')}</tbody></table></div>`;
+    }
+    return h + '</section>';
+  }
+  function bindStaffImport(ctx, refresh) {
+    const box = () => $('#staffBulk'), redraw = () => { const b = box(); if (b) { b.outerHTML = staffImportHTML(); bindStaffImport(ctx, refresh); } };
+    const tpl = $('#staffTpl'); if (tpl) tpl.onclick = () => downloadStaffTemplate(ctx);
+    const file = $('#staffFile');
+    if (file) file.onchange = async () => {
+      const f = file.files[0]; if (!f) return;
+      try { await loadStaff(ctx, true); staffDone = null; staffImport = parseStaff(root.XLSX.read(await f.arrayBuffer(), { type: 'array' }), ctx); }
+      catch (e) { staffImport = { items: [], errors: ['엑셀을 읽지 못했습니다: ' + e.message], warnings: [], skipped: [] }; }
+      redraw(); box()?.scrollIntoView({ block: 'start' });
+    };
+    const cancel = $('#staffCancel'); if (cancel) cancel.onclick = () => { staffImport = null; redraw(); };
+    const go = $('#staffGo');
+    if (go) go.onclick = async () => {
+      const list = staffImport.items;
+      if (!await ask('담당자 등록', `${list.length}명을 등록하고 코드를 발급합니다. 발급된 코드는 다음 화면에서만 볼 수 있습니다.`, '등록하고 발급')) return;
+      go.disabled = true; $('#staffCancel').disabled = true;
+      const out = [], prog = $('#staffProgress');
+      for (const [i, x] of list.entries()) {
+        if (prog) prog.textContent = `${i + 1} / ${list.length} · ${x.name} 등록 중…`;
+        try { const r = await store.staff({ action: 'create', name: x.name, role: x.role, district: x.district, phone: x.phone }); out.push({ ...x, code: r.code }); }
+        catch (e) { out.push({ ...x, error: e.message }); }
+      }
+      staffDone = out; staffImport = null;
+      await loadStaff(ctx, true); refresh(); redraw();
+      const bad = out.filter(x => !x.code).length; toast(bad ? `${out.length - bad}명 발급, ${bad}명 실패했습니다.` : `${out.length}명 모두 코드를 발급했습니다.`);
+    };
+    const codes = $('#staffCodes');
+    if (codes) codes.onclick = () => {
+      const X = root.XLSX, book = X.utils.book_new(), ok = staffDone.filter(x => x.code);
+      X.utils.book_append_sheet(book, X.utils.aoa_to_sheet([['교구', '역할', '이름', '휴대전화', '코드', '안내 문자'], ...ok.map(x => [x.district || '모든 교구(새가족)', ROLE[x.role], x.name, x.phone, x.code, codeMessage(x.name, x.role, x.code)])]), '발급코드');
+      X.writeFile(book, `함께돌봄-담당자코드-${C.iso()}.xlsx`);
+    };
+    $$('[data-copycode]').forEach(b => b.onclick = e => { const x = staffDone[+b.dataset.copycode]; copyText(codeMessage(x.name, x.role, x.code), e.target); });
+    const close = $('#staffClose');
+    if (close) close.onclick = async () => { if (await ask('발급 결과 닫기', '닫으면 이 코드들은 다시 볼 수 없습니다. 모두 전달했거나 엑셀로 받아 두셨나요?', '닫기', true)) { staffDone = null; redraw(); } };
+  }
+
   // ── 1. 담당자 관리 (전체 관리자)
   Pages.staff = {
     label: '담당자',
@@ -63,6 +179,7 @@
           <p id="createDistrictNote" class="muted small" hidden>새가족팀은 교구 없이 모든 교구의 새가족을 봅니다.</p>
           <div class="acts"><button class="primary" ${g.length ? '' : 'disabled'}>등록하고 코드 발급</button></div>
         </form></section>
+      ${g.length ? staffImportHTML() : ''}
       <section class="card"><div class="between"><h2>등록된 담당자</h2>
         <label class="inline">보기<select id="staffFilter"><option value="">전체</option><option value="new">새가족팀</option>${g.map(x => `<option>${esc(x.name)}</option>`).join('')}</select></label></div>
         <div id="staffList" class="list">불러오는 중…</div></section>
@@ -114,6 +231,7 @@
         } catch (e) { const el = $('#staffLog'); if (el) el.textContent = '이력을 불러오지 못했습니다.'; }
       };
       $('#staffFilter').onchange = list;
+      bindStaffImport(ctx, () => { list(); log(); });
       await loadStaff(ctx); list(); log();
     },
   };
