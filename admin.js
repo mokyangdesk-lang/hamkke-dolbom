@@ -9,7 +9,7 @@
   const roleLabel = x => rolesOf(x).map(r => ROLE[r] || r).join(' + '); // 겸직은 '교구 목사 + 새가족 담당 목사'
   const needsDistrict = roles => roles.some(r => NEEDS_DISTRICT.includes(r));
   const NEEDS_DISTRICT = ['visitor', 'committee', 'district_pastor'];
-  const ACTION = { myRoles: '관리자 겸직', create: '등록', reissue: '코드 다시 발급', suspend: '접근 중지', resume: '다시 허용', update: '교구·역할 변경', login: '로그인' };
+  const ACTION = { myRoles: '관리자 겸직', delete: '완전히 지움', create: '등록', reissue: '코드 다시 발급', suspend: '접근 중지', resume: '다시 허용', update: '교구·역할 변경', login: '로그인' };
   const date = v => String(v || '').slice(0, 10);
   const uid = () => (root.crypto?.randomUUID ? root.crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
 
@@ -137,7 +137,7 @@
         <p class="notice"><b>코드는 이 결과를 닫거나 새로고침하면 다시 볼 수 없습니다.</b> "코드 목록 엑셀로 받기"로 저장해 두거나 지금 문자로 보내 주세요. 받은 파일은 코드가 들어 있으니 다른 사람과 나누지 마세요.</p>
         <div class="acts"><button type="button" class="primary" id="staffCodes">코드 목록 엑셀로 받기</button><button type="button" class="quiet" id="staffClose">다 전달했습니다 · 닫기</button></div>
         <div class="table-wrap"><table><thead><tr><th>교구</th><th>역할</th><th>이름</th><th>코드</th><th></th></tr></thead><tbody>${d.map((x, i) => `<tr><td>${esc(x.district || '모든 교구')}</td><td>${esc(roleLabel(x))}</td><td><b>${esc(x.name)}</b></td>
-          <td>${x.code ? `<span class="code">${esc(x.code)}</span>` : `<span class="danger small">${esc(x.error || '실패')}</span>`}</td>
+          <td class="${x.code ? '' : 'long'}">${x.code ? `<span class="code">${esc(x.code)}</span>` : `<span class="danger small">${esc(x.error || '실패')}</span>`}</td>
           <td>${x.code ? (x.phone ? `<a class="button" href="${esc(root.Messages.smsHref(x.phone, codeMessage(x.name, rolesOf(x), x.code)))}">문자</a>` : `<button type="button" data-copycode="${i}">안내문 복사</button>`) : ''}</td></tr>`).join('')}</tbody></table></div>`;
     }
     return h + '</section>';
@@ -235,9 +235,9 @@
       };
       const all = () => ctx.cache.staff || [];
       const rowHTML = r => `<div class="row" id="st-${esc(r.user_id)}"><div class="grow"><b>${esc(r.display_name)}</b> <span class="chip ${r.status === 'active' ? 'ok' : 'warn'}">${r.status === 'active' ? '사용 중' : '접근 중지'}</span>
-          <div class="muted small">${esc(roleLabel(r))} · ${esc(r.district || '모든 교구')} · 코드 발급 ${esc(date(r.code_issued_at))}${r.phone ? ' · ' + esc(r.phone) : ''}</div></div>
+          <div class="muted small one-line" title="${esc(roleLabel(r))} · ${esc(r.district || '모든 교구')} · 코드 발급 ${esc(date(r.code_issued_at))}${r.phone ? ' · ' + esc(r.phone) : ''}">${esc(roleLabel(r))} · ${esc(r.district || '모든 교구')}${r.phone ? ' · ' + esc(r.phone) : ''}</div></div>
           <div class="acts">${r.phone ? `<a class="button" href="${esc(root.Messages.smsHref(r.phone, linkMessage(r.display_name, rolesOf(r))))}" title="주소 안내 문자(코드 없음)">주소 문자</a>` : '<button type="button" disabled title="전화번호가 없어 문자를 보낼 수 없습니다">주소 문자</button>'}<button data-st="edit" data-id="${r.user_id}">역할·교구·전화</button><button data-st="reissue" data-id="${r.user_id}">코드 다시 발급</button>
-          <button data-st="${r.status === 'active' ? 'suspend' : 'resume'}" data-id="${r.user_id}" class="${r.status === 'active' ? 'danger' : ''}">${r.status === 'active' ? '접근 중지' : '다시 허용'}</button></div></div>`;
+          <button data-st="${r.status === 'active' ? 'suspend' : 'resume'}" data-id="${r.user_id}" class="${r.status === 'active' ? 'danger' : ''}">${r.status === 'active' ? '접근 중지' : '다시 허용'}</button>${r.status === 'active' ? '' : `<button data-st="delete" data-id="${r.user_id}" class="danger">지우기</button>`}</div></div>`;
       // 교구별 한눈에: 줄 = 교구(+새가족팀), 칸 = 역할
       const overview = () => {
         const box = $('#staffOverview'); if (!box) return;
@@ -246,10 +246,10 @@
         const cell = (list, need) => list.length ? list.map(chip).join('') : need ? '<span class="chip warn">비어 있음</span>' : '<span class="muted">—</span>';
         const DR = ['district_pastor', 'visitor', 'committee'];
         const rows = g.map(d => { const here = S.filter(r => r.district === d.name);
-          return `<tr><th scope="row"><button type="button" class="link" data-dist="${esc(d.name)}">${esc(d.name)}</button></th>${DR.map(r => `<td>${cell(here.filter(x => rolesOf(x).includes(r)), r === 'district_pastor' || (r === 'visitor' && d.visitors))}</td>`).join('')}<td class="num">${here.length}</td></tr>`; }).join('');
+          return `<tr><th scope="row"><button type="button" class="link" data-dist="${esc(d.name)}">${esc(d.name)}</button></th>${DR.map(r => `<td class="long">${cell(here.filter(x => rolesOf(x).includes(r)), r === 'district_pastor' || (r === 'visitor' && d.visitors))}</td>`).join('')}<td class="num">${here.length}</td></tr>`; }).join('');
         const has = (x, r) => rolesOf(x).includes(r), team = S.filter(r => !r.district || ['newcomer_pastor', 'newcomer_admin', 'visit_lead'].some(k => has(r, k)));
         box.innerHTML = `<table class="overview"><thead><tr><th>교구</th><th>교구 목사</th><th>심방사역자</th><th>새가족위원</th><th class="num">합계</th></tr></thead><tbody>${rows}
-          <tr class="team"><th scope="row"><button type="button" class="link" data-dist="new">모든 교구</button></th><td colspan="3"><span class="muted small">새가족 담당 목사</span> ${cell(team.filter(x => has(x, 'newcomer_pastor')), false)} <span class="muted small" style="margin-left:10px">새가족 임원</span> ${cell(team.filter(x => has(x, 'newcomer_admin')), true)} <span class="muted small" style="margin-left:10px">심방 총괄</span> ${cell(team.filter(x => has(x, 'visit_lead')), false)}</td><td class="num">${team.length}</td></tr></tbody></table>`;
+          <tr class="team"><th scope="row"><button type="button" class="link" data-dist="new">모든 교구</button></th><td colspan="3" class="long"><span class="muted small">새가족 담당 목사</span> ${cell(team.filter(x => has(x, 'newcomer_pastor')), false)} <span class="muted small" style="margin-left:10px">새가족 임원</span> ${cell(team.filter(x => has(x, 'newcomer_admin')), true)} <span class="muted small" style="margin-left:10px">심방 총괄</span> ${cell(team.filter(x => has(x, 'visit_lead')), false)}</td><td class="num">${team.length}</td></tr></tbody></table>`;
         const t = $('#staffTotals'); if (t) t.textContent = `모두 ${S.length}명 (${STAFF_CATS.map(([, l, roles]) => l + ' ' + S.filter(r => rolesOf(r).some(x => roles.includes(x))).length).join(' · ')})${S.length - act.length ? ' · 접근 중지 ' + (S.length - act.length) + '명' : ''}`;
         $$('[data-dist]', box).forEach(b => b.onclick = () => { $('#staffFilter').value = b.dataset.dist; staffCat = ''; $('#staffSearch').value = ''; list(); $('#staffListCard').scrollIntoView({ block: 'start', behavior: 'smooth' }); });
         $$('[data-find]', box).forEach(b => b.onclick = () => { const r = S.find(x => x.user_id === b.dataset.find); $('#staffFilter').value = r.district || 'new'; staffCat = ''; $('#staffStatus').value = ''; $('#staffSearch').value = ''; list();
@@ -287,6 +287,9 @@
           } else if (a === 'suspend') {
             if (!await ask('접근 중지', `${r.display_name}님은 지금부터 어떤 기기에서도 자료를 볼 수 없습니다. 기록은 지워지지 않습니다.`, '접근 중지', true)) return;
             await store.staff({ action: 'suspend', userId: r.user_id }); toast('접근을 중지했습니다.');
+          } else if (a === 'delete') {
+            if (!await ask('담당자 완전히 지우기', `${r.display_name}님을 담당자 목록에서 완전히 지웁니다. 이 코드로는 다시 로그인할 수 없고, 되돌릴 수 없습니다. 이분이 남긴 연락 기록과 보고는 그대로 남습니다.`, '완전히 지우기', true)) return;
+            await store.staff({ action: 'delete', userId: r.user_id }); toast(r.display_name + '님을 지웠습니다.');
           } else { await store.staff({ action: 'resume', userId: r.user_id }); toast('다시 허용했습니다. 기존 코드로 로그인할 수 있습니다.'); }
           await loadStaff(ctx, true); list(); log();
         } catch (err) { toast(err.message); }

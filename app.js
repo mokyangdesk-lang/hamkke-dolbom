@@ -27,9 +27,9 @@
   const ADMIN_AREAS = [
     { key: 'people', label: '사람·명단', hint: '담당자 · 명단 · 교구', items: [['staff', '등록 · 코드 발급 · 접근 중지 · 주소 문자'], ['imports', '교적 엑셀 올리기 · 양식 받기'], ['roster', '돌봄 성도 · 새가족 명단 보기'], ['groups', '교구 이름 · 심방사역자 있는 교구']] },
     { key: 'new', label: '새가족', hint: '현황 · 교육 · 매칭 · 인계', items: [['board', '단계별 진행 · 다음 할 일'], ['attendance', '새가족교육 4과목 출석'], ['matching', '4과목 마친 분과 양육도우미 잇기'], ['handover', '정착한 분을 교구로 인계'], ['nreports', '새가족위원 주간 보고 보기']] },
-    { key: 'visit', label: '심방', hint: '교구별 할 일 · 성도 · 보고', items: [['today', '교구를 골라 오늘 할 일'], ['people', '교구 성도 · 연락 기록'], ['assign', '교구별 심방사역자와 성도 현황'], ['reports', '심방사역자 주간 보고 보기']] },
+    { key: 'visit', label: '심방', hint: '할 일 · 성도 · 보고', items: [['today', '교구를 골라 오늘 할 일'], ['people', '교구 성도 · 연락 기록'], ['assign', '교구별 심방사역자와 성도 현황'], ['reports', '심방사역자 주간 보고 보기']] },
     { key: 'sms', label: '문자', hint: '보내기 · 예문', items: [['message', '받는 사람 → 예문 → 문자 앱'], ['templates', '교회 공통 예문 · 기준 일수']] },
-    { key: 'set', label: '설정', hint: '화면 · 자료 백업 · 내 계정', items: [['theme', '색 · 글꼴 · 밝기 · 글자 크기'], ['data', '백업 · 한 분 지우기 · 초기화 · 되살리기'], ['account', '로그인 이메일 · 비밀번호 바꾸기 · 관리자 추가 안내']] },
+    { key: 'set', label: '설정', hint: '화면 · 백업 · 계정', items: [['theme', '색 · 글꼴 · 밝기 · 글자 크기'], ['data', '백업 · 한 분 지우기 · 초기화 · 되살리기'], ['account', '로그인 이메일 · 비밀번호 바꾸기 · 관리자 추가 안내']] },
   ];
   NAV.admin = ADMIN_AREAS.flatMap(a => a.items.map(([id]) => id));
   const areaOf = id => ADMIN_AREAS.find(a => a.items.some(([x]) => x === id));
@@ -39,7 +39,7 @@
   // 최고 관리자·심방 총괄은 교구 화면(오늘 할 일·성도·보고 받기·인계)을 위에서 고른 교구로 봅니다.
   const DISTRICT_PAGES = ['today', 'people', 'reports', 'handover'];
   const PICK_ROLES = ['admin', 'visit_lead'];
-  const pickedDistrict = () => { const g = C.groups(state).map(x => x.name); return g.includes(adminDistrict) ? adminDistrict : g[0] || ''; };
+  const pickedDistrict = () => { const g = C.groups(state).map(x => x.name); if (g.includes(adminDistrict)) return adminDistrict; return g.find(n => state.people.some(p => p.district === n && !p.newcomer)) || g[0] || ''; }; // 처음에는 성도가 있는 교구부터
   // 겸직: 지금 쓰는 역할(기기에 기억). 서버 권한은 모든 역할을 합친 것이고, 화면은 고른 역할의 것만 보입니다.
   const ROLE_KEY = id => 'hamkke.activeRole.' + id;
   function account() {
@@ -205,7 +205,7 @@
 
   store.on((type, msg) => { if (type === 'signedout') { closeDialog(); renderLogin(msg); } });
   async function boot() {
-    if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    if (!root.HAMKKE_DEMO && 'serviceWorker' in navigator && location.protocol === 'https:') { // 시연 모드는 앱 저장(서비스 워커)을 쓰지 않음
       const hadOld = !!navigator.serviceWorker.controller;
       navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => {
         document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => { }); });

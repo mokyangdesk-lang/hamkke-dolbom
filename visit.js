@@ -198,7 +198,7 @@
     return `<article class="report-doc"><header><div class="eyebrow">${draft ? '초안 · 아직 승인 전' : r.revision > 1 ? `수정본 ${r.revision}` : '승인함'}</div>
       <h2>심방 주간 보고</h2><p class="muted small">${esc(r.district)} · ${esc(r.authorName || '')} · ${esc(r.period)}${r.approvedAt ? ' · 승인 ' + esc(new Date(r.approvedAt).toLocaleString('ko-KR')) : ''}</p></header>
       <div class="stats"><div class="stat"><b>${s.people}</b>연락한 성도</div><div class="stat"><b>${s.attempts}</b>연락 시도</div><div class="stat"><b>${s.connected}</b>통화·방문</div><div class="stat"><b>${s.absent}</b>부재</div><div class="stat"><b>${s.followups}</b>다시 연락</div></div>
-      ${r.rows.length ? `<div class="table-wrap"><table><thead><tr><th>날짜</th><th>성도</th><th>결과</th><th>내용</th><th>다음 연락</th></tr></thead><tbody>${r.rows.map(x => `<tr><td>${esc(x.date)}</td><td>${esc(x.name)}</td><td>${esc(x.result)}</td><td>${esc(x.memo)}</td><td>${esc(x.nextDate)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">이 기간에 기록한 연락이 없습니다.</p>'}
+      ${r.rows.length ? `<div class="table-wrap"><table><thead><tr><th>날짜</th><th>성도</th><th>결과</th><th>내용</th><th>다음 연락</th></tr></thead><tbody>${r.rows.map(x => `<tr><td>${esc(x.date)}</td><td>${esc(x.name)}</td><td>${esc(x.result)}</td><td class="long">${esc(x.memo)}</td><td>${esc(x.nextDate)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">이 기간에 기록한 연락이 없습니다.</p>'}
       ${r.prayers.length ? `<h3>기도제목</h3><ul>${r.prayers.map(x => `<li><b>${esc(x.name)}</b> · ${esc(x.text)}</li>`).join('')}</ul>` : ''}
       ${r.note ? `<h3>덧붙이는 말</h3><p>${esc(r.note)}</p>` : ''}</article>`;
   }

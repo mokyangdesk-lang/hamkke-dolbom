@@ -55,7 +55,7 @@
 [hidden] { display: none !important; }
 :root { --fs-xs: max(13px, .78rem); /* 가장 작은 글씨도 13px 아래로 내려가지 않음 */ --fs-sm: .875rem; --fs-md: 1rem; --fs-lg: 1.15rem; --fs-xl: 1.4rem; --fs-2xl: 1.85rem; }
 html { font-size: var(--base); -webkit-text-size-adjust: 100%; }
-body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); line-height: 1.6; letter-spacing: -0.006em; -webkit-font-smoothing: antialiased; word-break: keep-all; overflow-wrap: anywhere; } /* 한글은 낱말 단위로 줄바꿈 */
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); line-height: 1.6; letter-spacing: -0.006em; -webkit-font-smoothing: antialiased; word-break: keep-all; overflow-wrap: break-word; } /* 한글은 낱말 단위로 줄바꿈. 이름·낱말은 중간에서 끊지 않음(칸이 좁아도 글자 단위로 쪼개지 않음) */
 h1 { font-size: var(--fs-2xl); } h2 { font-size: var(--fs-lg); } h3 { font-size: var(--fs-md); }
 h1, h2, h3 { line-height: 1.3; letter-spacing: -0.02em; text-wrap: balance; }
 button, input, select, textarea { font: inherit; color: inherit; letter-spacing: inherit; }
@@ -149,8 +149,8 @@ details.more[open] summary::before { transform: rotate(90deg); }
 @media (max-width: 760px) { .two { grid-template-columns: 1fr; } .page-title { font-size: var(--fs-xl); } .card { padding: 18px; border-radius: 18px; } }
 
 /* ── 흐름 표시: 1 → 2 → 3 */
-.flow { list-style: none; padding: 0; margin: 6px 0 18px; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; counter-reset: f; font-size: var(--fs-sm); }
-.flow li { counter-increment: f; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; color: var(--ink-2); background: var(--surface); border: 1px solid var(--line); border-radius: 99px; padding: 4px 12px 4px 5px; }
+.flow { list-style: none; padding: 0; margin: 6px 0 18px; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; counter-reset: f; font-size: var(--fs-sm); } /* 단계 표시: 한 줄에 같은 너비로 */
+.flow li { counter-increment: f; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; white-space: nowrap; color: var(--ink-2); background: var(--surface); border: 1px solid var(--line); border-radius: 99px; padding: 4px 12px 4px 5px; }
 .flow li::before { content: counter(f); width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-text); font-size: var(--fs-xs); font-weight: 800; }
 .flow li:not(:last-child)::after { content: none; }
 .flow.steps li.now { border-color: var(--accent); color: var(--accent-text); background: var(--accent-softer); }
@@ -180,7 +180,8 @@ details.more[open] summary::before { transform: rotate(90deg); }
 .error-list, .warn-list { padding-left: 1.2em; } .error-list li { color: var(--bad); } .warn-list li { color: var(--warn); }
 .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r); margin: 12px 0; }
 table { border-collapse: collapse; width: 100%; min-width: 520px; font-size: var(--fs-sm); }
-th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; vertical-align: middle; } /* 표의 칸은 한 줄로(넓으면 표를 옆으로 밀어 봄) */
+td.long, th.long { white-space: normal; min-width: 14em; } /* 메모·오류처럼 긴 글만 여러 줄 */
 th { background: var(--surface-2); font-weight: 700; color: var(--ink-2); font-size: var(--fs-sm); }
 tr:last-child td { border-bottom: 0; }
 
@@ -454,3 +455,13 @@ table.nc-table tr.paused td { opacity: .55; }
 .extras .choice-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
 /* 꼭 읽어야 하는 안내는 진한 글씨로 */
 .login-card .must { color: var(--ink-2); }
+
+/* 한 줄 규칙: 이름표·칩·버튼 글자·이름은 줄을 바꾸지 않음 */
+.chip, .name-chip, .ministry-tag, .badge, .row .grow > b, .area-text b, .subtabs button, .tabs button, .seg button, .role-bar-label { white-space: nowrap; }
+@media (max-width: 760px) { .flow { grid-auto-flow: row; grid-template-columns: repeat(auto-fit, minmax(max(140px, 30%), 1fr)); } .flow li { min-width: 0; } }
+td .code { white-space: nowrap; word-break: normal; font-size: var(--fs-md); } /* 표 안의 코드는 한 줄로 */
+.area-hint { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+/* 목록 한 줄: 설명 줄은 한 줄로(넘치면 … , 전체는 손가락을 대면 보임), 단추는 같은 너비 */
+.row .grow { overflow: hidden; }
+.one-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row > .acts button, .row > .acts .button { min-width: 6.5em; }

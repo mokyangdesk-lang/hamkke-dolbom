@@ -70,7 +70,7 @@
   }
   // 브라우저 탭·홈 화면에 붙는 역할 이름(새가족 담당 목사·새가족 관리자는 '새가족팀')
   const TITLE = { admin: '관리자', newcomer_pastor: '새가족팀', newcomer_admin: '새가족팀', district_pastor: '교구 목사', committee: '새가족위원', visitor: '심방사역자', visit_lead: '심방 총괄' };
-  const setTitle = label => { try { root.document.title = label ? '함께 돌봄 · ' + label : '함께 돌봄'; } catch (_) { } };
+  const setTitle = label => { const app = root.HAMKKE_DEMO ? '함께 돌봄 시연' : '함께 돌봄'; try { root.document.title = label ? app + ' · ' + label : app; } catch (_) { } };
   // 계정의 모든 역할(기본 역할 + 겸직)
   const rolesOf = x => [...new Set([x?.role, ...(Array.isArray(x?.extra_roles) ? x.extra_roles : [])].filter(Boolean))];
   root.UI = { TITLE, setTitle, rolesOf, $, $$, esc, ROLE, MINISTRY, CREDIT, toast, dialog, closeDialog, ask, formatCode, readInvite, copyText, matches, liveSearch };

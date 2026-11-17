@@ -11,6 +11,7 @@
 | 관리자 | https://mokyangdesk-lang.github.io/hamkke-dolbom/?for=admin | 이메일 로그인 → 관리 화면(담당자·교구·명단·매칭·배정·예문·테마) |
 | 교구 목사 · 새가족팀 | https://mokyangdesk-lang.github.io/hamkke-dolbom/ | 이름+코드 → 맡은 범위의 화면 |
 | 사용 안내(설치법·자주 묻는 질문) | https://mokyangdesk-lang.github.io/hamkke-dolbom/guide/ | 누구나 |
+| 시연(가상 자료, 서버와 연결 안 됨) | https://mokyangdesk-lang.github.io/hamkke-dolbom/demo.html | 누구나 · 목사님들께 보여 드릴 때 |
 
 - 주소는 달라도 **같은 앱**입니다. 어떤 화면이 열릴지는 주소가 아니라 **받은 코드**가 정합니다(서버가 판정). 다른 역할의 주소로 들어와도 자기 화면만 열립니다.
 - 홈 화면(바탕화면)에 추가해서 앱처럼 씁니다. 따라 하기는 사용 안내에 있습니다.
