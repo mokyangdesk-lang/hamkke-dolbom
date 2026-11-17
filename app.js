@@ -9,12 +9,12 @@
   // 역할별 메뉴(순서대로). 각 화면은 Pages에 등록됩니다(admin.js 등).
   const NAV = {
     admin: [], // 아래 ADMIN_AREAS 순서대로 채웁니다.
-    newcomer_admin: ['board', 'attendance', 'matching', 'imports'],
-    newcomer_pastor: ['board', 'attendance', 'nreports', 'message'],
-    district_pastor: ['today', 'people', 'message', 'reports', 'handover', 'assign'],
+    newcomer_admin: ['board', 'attendance', 'matching', 'imports', 'stats'],
+    newcomer_pastor: ['board', 'attendance', 'nreports', 'message', 'stats'],
+    district_pastor: ['today', 'people', 'message', 'reports', 'handover', 'assign', 'stats'],
     committee: ['board', 'attendance', 'message', 'nreport'],
     visitor: ['today', 'people', 'message', 'report'],
-    visit_lead: ['today', 'people', 'message', 'reports', 'assign'], // 심방 총괄: 교구를 골라 봄
+    visit_lead: ['today', 'people', 'message', 'reports', 'assign', 'stats'], // 심방 총괄: 교구를 골라 봄
   };
   // 최고 관리자 메뉴: 큰 영역 5개(컴퓨터는 왼쪽, 휴대폰은 아래) → 영역 안의 화면만 위에 작은 탭으로. [화면, 한 줄 설명]
   const ICON = {
@@ -22,6 +22,7 @@
     new: '<path d="M12 20v-8"/><path d="M12 12c0-4 3-6.5 7-6.5 0 4-3 6.5-7 6.5Z"/><path d="M12 14c0-3.2-2.4-5.2-5.6-5.2 0 3.2 2.4 5.2 5.6 5.2Z"/>',
     visit: '<path d="M4 11l8-6.5 8 6.5"/><path d="M6 10v9.5h12V10"/><path d="M12 17s-2.6-1.6-2.6-3.3a1.4 1.4 0 0 1 2.6-.7 1.4 1.4 0 0 1 2.6.7c0 1.7-2.6 3.3-2.6 3.3Z"/>',
     sms: '<path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 3.5V16H6.5A2.5 2.5 0 0 1 4 13.5Z"/>',
+    stats: '<path d="M4 20h16"/><path d="M7 16v-5"/><path d="M12 16V7"/><path d="M17 16v-8"/>',
     set: '<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/>',
   };
   const ADMIN_AREAS = [
@@ -29,6 +30,7 @@
     { key: 'new', label: '새가족', hint: '현황 · 교육 · 매칭 · 인계', items: [['board', '단계별 진행 · 다음 할 일'], ['attendance', '새가족교육 4과목 출석'], ['matching', '4과목 마친 분과 양육도우미 잇기'], ['handover', '정착한 분을 교구로 인계'], ['nreports', '새가족위원 주간 보고 보기']] },
     { key: 'visit', label: '심방', hint: '할 일 · 성도 · 보고', items: [['today', '교구를 골라 오늘 할 일'], ['people', '교구 성도 · 연락 기록'], ['assign', '교구별 심방사역자와 성도 현황'], ['reports', '심방사역자 주간 보고 보기']] },
     { key: 'sms', label: '문자', hint: '보내기 · 예문', items: [['message', '받는 사람 → 예문 → 문자 앱'], ['templates', '교회 공통 예문 · 기준 일수']] },
+    { key: 'stats', label: '통계', hint: '심방 · 새가족 · 보고', items: [['stats', '기간별로 한눈에 · 엑셀 · 인쇄']] },
     { key: 'set', label: '설정', hint: '화면 · 백업 · 계정', items: [['theme', '색 · 글꼴 · 밝기 · 글자 크기'], ['data', '백업 · 한 분 지우기 · 초기화 · 되살리기'], ['account', '로그인 이메일 · 비밀번호 바꾸기 · 관리자 추가 안내']] },
   ];
   NAV.admin = ADMIN_AREAS.flatMap(a => a.items.map(([id]) => id));
@@ -176,10 +178,18 @@
   function districtBar(m) {
     return `${DISTRICT_PAGES.includes(page) ? `<div class="admin-district"><label>교구 <select id="adminDistrict">${C.groups(state).map(g => `<option ${g.name === m.district ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select></label><span class="muted small">${m.role === 'admin' ? '최고 관리자' : '심방 총괄'}: 고른 교구의 화면으로 봅니다</span></div>` : ''}`;
   }
+  // 관리자 화면의 시연 배너: 목사님들께 가상 자료로 보여 드릴 시연 화면으로 안내합니다(닫으면 그 기기에서 다시 안 보임).
+  const DEMO_HIDE = 'hamkke.demoBanner.off';
+  function demoBanner() {
+    if (root.HAMKKE_DEMO) return '';
+    try { if (root.localStorage.getItem(DEMO_HIDE)) return ''; } catch (_) { }
+    return `<div class="demo-banner" role="region" aria-label="시연 안내"><span class="chip">시연</span><span class="demo-banner-text">목사님들께 보여 드릴 <b>시연 화면</b>이 있습니다. 가상 자료로 움직이며 실제 자료와 섞이지 않습니다.</span>
+      <span class="acts"><a class="button primary" href="demo.html" target="_blank" rel="noopener">시연 열기</a><button type="button" id="demoCopy">주소 복사</button><button type="button" class="quiet" id="demoHide" aria-label="시연 배너 닫기">닫기</button></span></div>`;
+  }
   function adminShell(m, P) {
     const label = id => Pages[id]?.label || id, area = areaOf(page) || ADMIN_AREAS[0], cur = area.items.find(([id]) => id === page);
     const svg = k => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg>`;
-    return `<div class="admin-shell">
+    return `${demoBanner()}<div class="admin-shell">
       <nav class="areas" aria-label="관리자 영역">${ADMIN_AREAS.map(a => `<button type="button" data-area="${a.key}" class="area-btn ${a === area ? 'active' : ''}" ${a === area ? 'aria-current="true"' : ''}>${svg(a.key)}<span class="area-text"><b>${esc(a.label)}</b><span class="area-hint">${esc(a.hint)}</span></span></button>`).join('')}</nav>
       <div class="admin-main">
         <div class="area-bar"><nav class="subtabs" aria-label="${esc(area.label)} 화면">${area.items.map(([id, desc]) => `<button type="button" data-page="${id}" class="${id === page ? 'active' : ''}" ${id === page ? 'aria-current="page"' : ''} title="${esc(desc)}">${esc(label(id))}</button>`).join('')}</nav>
@@ -195,6 +205,8 @@
     const top = $('.top'); if (top) document.documentElement.style.setProperty('--top-h', top.offsetHeight + 'px');
     $$('[data-page]').forEach(b => b.onclick = () => go(b.dataset.page));
     $$('[data-role]').forEach(b => b.onclick = () => switchRole(b.dataset.role));
+    const dc = $('#demoCopy'); if (dc) dc.onclick = e => root.UI.copyText(new URL('demo.html', location.href).href, e.target);
+    const dh = $('#demoHide'); if (dh) dh.onclick = () => { try { root.localStorage.setItem(DEMO_HIDE, '1'); } catch (_) { } render(); };
     $('#refreshBtn').onclick = () => refresh();
     const ad = $('#adminDistrict'); if (ad) ad.onchange = () => { adminDistrict = ad.value; render(); };
     $$('[data-area]').forEach(b => b.onclick = () => { const a = ADMIN_AREAS.find(x => x.key === b.dataset.area); if (a && areaOf(page) !== a) go(a.items[0][0]); });
