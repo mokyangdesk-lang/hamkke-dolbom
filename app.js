@@ -100,7 +100,7 @@
   function loginHTML(message) {
     const s = me(), sv = store.server(), e = entry();
     return `<main class="login" id="main"><div class="login-card">
-      <div class="brand-mark" aria-hidden="true">✦</div><h1>${e ? esc(e.title) : '함께 돌봄'}</h1><p class="muted">${e ? '함께 돌봄 · ' : ''}심방 · 새가족 사역자의 수첩</p>
+      <div class="brand-mark logo" aria-hidden="true"><img src="icon.svg" alt=""></div><h1>${e ? esc(e.title) : '함께 돌봄'}</h1><p class="muted">${e ? '함께 돌봄 · ' : ''}심방 · 새가족 사역자의 수첩</p>
       <div class="who-login" aria-label="이 화면에서 로그인하는 분">${(e ? e.tags : ['심방사역자', '새가족위원', '교구 목사', '새가족팀']).map(t => `<span>${esc(t)}</span>`).join('')}</div>
       <p class="small must">${e ? esc(e.note) : '모두 이 화면에서 로그인합니다. 받은 코드에 맞는 화면(심방 또는 새가족)이 자동으로 열립니다.'}</p>
       ${message ? `<p class="notice" role="alert">${esc(message)}</p>` : ''}
@@ -162,7 +162,7 @@
     if (!nav.includes(page) && page !== 'alerts') page = nav[0];
     const alerts = root.NotifyCore ? root.NotifyCore.compute(state, m).length : 0;
     const P = Pages[page];
-    return `<header class="top"><div class="brand"><span class="brand-mark sm" aria-hidden="true">✦</span><span>함께 돌봄</span><span class="ministry-tag">${esc(ministry)}</span></div>
+    return `<header class="top"><div class="brand"><span class="brand-mark sm logo" aria-hidden="true"><img src="icon.svg" alt=""></span><span>함께 돌봄</span><span class="ministry-tag">${esc(ministry)}</span></div>
       <div class="who"><b>${esc(m.name || '')}</b> <span class="muted">${esc(ROLE[m.role])}${m.district && ['district_pastor', 'visitor', 'committee'].includes(m.role) ? ' · ' + esc(m.district) : ''}</span></div>
       <div class="top-acts"><span id="syncState" class="muted small" role="status">서버와 연결됨</span><button id="alertsBtn" class="${page === 'alerts' ? 'primary' : 'quiet'}" aria-label="알림 ${alerts}건">알림${alerts ? ` <span class="badge">${alerts}</span>` : ''}</button><button id="refreshBtn" class="quiet" title="다른 기기에서 바꾼 내용을 불러옵니다" aria-label="새로고침"><span aria-hidden="true">↻</span><span class="lbl">새로고침</span></button><button id="logoutBtn" class="quiet">로그아웃</button></div></header>
       ${roleBar(m)}
