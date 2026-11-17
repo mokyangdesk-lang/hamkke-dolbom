@@ -2,7 +2,7 @@
    화면에서 메뉴를 숨기는 것은 편의일 뿐, 실제 권한은 서버가 판정합니다. */
 (function (root) {
   'use strict';
-  const { $, $$, esc, ROLE, MINISTRY, CREDIT, toast, dialog, closeDialog, ask, formatCode } = root.UI;
+  const { $, $$, esc, ROLE, MINISTRY, CREDIT, TITLE, setTitle, toast, dialog, closeDialog, ask, formatCode, readInvite } = root.UI;
   const store = root.HamkkeStore, C = root.MinistryCore;
   const copy = x => JSON.parse(JSON.stringify(x));
 
@@ -14,6 +14,7 @@
     district_pastor: ['today', 'people', 'message', 'reports', 'handover', 'assign'],
     committee: ['board', 'attendance', 'message', 'nreport'],
     visitor: ['today', 'people', 'message', 'report'],
+    visit_lead: ['today', 'people', 'message', 'reports', 'assign'], // 심방 총괄: 교구를 골라 봄
   };
   // 최고 관리자 메뉴: 큰 영역 5개(컴퓨터는 왼쪽, 휴대폰은 아래) → 영역 안의 화면만 위에 작은 탭으로. [화면, 한 줄 설명]
   const ICON = {
@@ -34,12 +35,42 @@
   const areaOf = id => ADMIN_AREAS.find(a => a.items.some(([x]) => x === id));
   const Pages = root.HamkkePages = root.HamkkePages || {};
 
-  let state = C.empty(), page = '', cache = {}, loading = false, adminDistrict = '';
-  // 최고 관리자는 모든 화면을 씁니다. 교구 화면(오늘 할 일·성도·보고 받기·인계)은 위에서 고른 교구로 봅니다.
+  let state = C.empty(), page = '', cache = {}, loading = false, adminDistrict = '', activeRole = '';
+  // 최고 관리자·심방 총괄은 교구 화면(오늘 할 일·성도·보고 받기·인계)을 위에서 고른 교구로 봅니다.
   const DISTRICT_PAGES = ['today', 'people', 'reports', 'handover'];
+  const PICK_ROLES = ['admin', 'visit_lead'];
   const pickedDistrict = () => { const g = C.groups(state).map(x => x.name); return g.includes(adminDistrict) ? adminDistrict : g[0] || ''; };
-  const me = () => { const m = store.status(); return m && m.role === 'admin' && DISTRICT_PAGES.includes(page) ? { ...m, district: pickedDistrict() } : m; };
-  const scoped = () => { const m = me(); if (!(m && m.role === 'admin' && DISTRICT_PAGES.includes(page))) return state; const d = m.district; return { ...state, people: state.people.filter(p => p.district === d) }; };
+  // 겸직: 지금 쓰는 역할(기기에 기억). 서버 권한은 모든 역할을 합친 것이고, 화면은 고른 역할의 것만 보입니다.
+  const ROLE_KEY = id => 'hamkke.activeRole.' + id;
+  function account() {
+    const m = store.status(); if (!m || !m.signedIn || !m.role) return m;
+    const roles = m.roles && m.roles.length ? m.roles : [m.role];
+    if (!roles.includes(activeRole)) { let saved = ''; try { saved = root.localStorage.getItem(ROLE_KEY(m.userId)) || ''; } catch (_) { } activeRole = roles.includes(saved) ? saved : m.role; }
+    return { ...m, roles, role: activeRole };
+  }
+  function switchRole(r) {
+    const m = account(); if (!m?.roles?.includes(r)) return;
+    activeRole = r; try { root.localStorage.setItem(ROLE_KEY(m.userId), r); } catch (_) { }
+    page = (NAV[r] || [])[0] || ''; render();
+  }
+  const me = () => { const m = account(); return m && PICK_ROLES.includes(m.role) && DISTRICT_PAGES.includes(page) ? { ...m, district: pickedDistrict() } : m; };
+  // 한 역할로 볼 때 그 역할의 범위(겸직이면 서버가 여러 역할의 자료를 함께 주므로 화면에서 나눔)
+  const inRole = (m, p) => {
+    const same = !!m.district && p.district === m.district;
+    if (m.role === 'district_pastor') return same;
+    if (m.role === 'visitor') return same && !p.newcomer;
+    if (m.role === 'committee') return same && !!p.newcomer;
+    if (m.role === 'newcomer_pastor' || m.role === 'newcomer_admin') return !!p.newcomer;
+    if (m.role === 'visit_lead') return !p.newcomer;
+    return true;
+  };
+  const scoped = () => {
+    const m = me(); if (!m || !m.signedIn) return state;
+    let people = state.people;
+    if (PICK_ROLES.includes(m.role) && DISTRICT_PAGES.includes(page)) people = people.filter(p => p.district === m.district && (m.role === 'admin' || !p.newcomer));
+    else if (m.role !== 'admin' && (m.roles || []).length > 1) people = people.filter(p => inRole(m, p));
+    return people === state.people ? state : { ...state, people };
+  };
   const ctx = () => ({ state: scoped(), me: me(), cache, commit, refresh, render, go, toast, dialog, closeDialog, ask });
   function go(id) { page = id; render(); }
 
@@ -69,7 +100,7 @@
     return `<main class="login" id="main"><div class="login-card">
       <div class="brand-mark" aria-hidden="true">✦</div><h1>${e ? esc(e.title) : '함께 돌봄'}</h1><p class="muted">${e ? '함께 돌봄 · ' : ''}심방 · 새가족 사역자의 수첩</p>
       <div class="who-login" aria-label="이 화면에서 로그인하는 분">${(e ? e.tags : ['심방사역자', '새가족위원', '교구 목사', '새가족팀']).map(t => `<span>${esc(t)}</span>`).join('')}</div>
-      <p class="muted small">${e ? esc(e.note) : '모두 이 화면에서 로그인합니다. 받은 코드에 맞는 화면(심방 또는 새가족)이 자동으로 열립니다.'}</p>
+      <p class="small must">${e ? esc(e.note) : '모두 이 화면에서 로그인합니다. 받은 코드에 맞는 화면(심방 또는 새가족)이 자동으로 열립니다.'}</p>
       ${message ? `<p class="notice" role="alert">${esc(message)}</p>` : ''}
       ${s.hasServer ? '' : '<p class="notice">서버 정보가 아직 없습니다. 아래 "서버 정보 입력"을 관리자에게 받아 한 번 입력해 주세요.</p>'}
       <form id="codeLogin" class="stack">
@@ -77,7 +108,8 @@
         <label for="loginCode">개인 코드</label><input id="loginCode" name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text" placeholder="XXXXX-XXXXX-XXXXX-XXXXX" required>
         <button class="primary big" ${s.hasServer ? '' : 'disabled'}>로그인</button>
       </form>
-      <p class="muted small">코드는 관리자에게 받습니다. 잊어버리셨으면 관리자에게 새 코드를 요청하세요. 이전 코드는 그때부터 쓸 수 없습니다.</p>
+      <p class="small must">받은 문자의 <b>링크를 누르면 바로 들어가집니다.</b> 직접 넣을 때는 문자를 길게 눌러 복사한 뒤 코드 칸에 붙여 넣어도 됩니다.</p>
+      <p class="small must">코드를 잊어버리셨으면 관리자에게 새 코드를 요청하세요. 이전 코드는 그때부터 쓸 수 없습니다.</p>
       <details class="more" ${e === ENTRY.admin ? 'open' : ''}><summary>관리자 이메일 로그인</summary>
         <form id="emailLogin" class="stack"><label for="adminEmail">이메일</label><input id="adminEmail" name="email" type="email" autocomplete="username" required>
         <label for="adminPassword">비밀번호</label><input id="adminPassword" name="password" type="password" autocomplete="current-password" required>
@@ -90,9 +122,13 @@
         <button>이 기기에 저장</button></form></details>`}
     </div><p class="guide-link"><a href="guide/">처음이신가요? 사용 안내 보기</a></p><p class="credit">${esc(CREDIT)}</p></main>`;
   }
-  function bindLogin() {
-    const code = $('#loginCode');
-    if (code) code.oninput = () => { code.value = formatCode(code.value); };
+  function bindLogin(fill) {
+    const code = $('#loginCode'), nameEl = $('#loginName');
+    // 받은 문자를 통째로 붙여 넣어도 이름과 코드를 알아서 채웁니다. 소문자·띄어쓰기·하이픈 없이 쳐도 됩니다.
+    const take = el => { const inv = el.value.length > 24 ? readInvite(el.value) : null; if (!inv) return false; if (inv.name && (el === nameEl || !nameEl.value.trim())) nameEl.value = inv.name; code.value = inv.code; if (el === nameEl && !inv.name) nameEl.value = ''; return true; };
+    if (code) code.oninput = () => { if (!take(code)) code.value = formatCode(code.value); };
+    if (nameEl) nameEl.oninput = () => { take(nameEl); };
+    if (fill) { nameEl.value = fill.name || ''; code.value = fill.code || ''; }
     $('#codeLogin').onsubmit = async e => {
       e.preventDefault(); const f = new FormData(e.target), btn = $('button', e.target);
       btn.disabled = true; btn.textContent = '확인 중…';
@@ -106,7 +142,8 @@
     const sf = $('#serverForm');
     if (sf) sf.onsubmit = e => { e.preventDefault(); const f = new FormData(sf); try { store.setServer(f.get('url'), f.get('key'), f.get('churchId')); renderLogin('서버 정보를 저장했습니다. 이제 이름과 코드로 로그인하세요.'); } catch (err) { toast(err.message); } };
   }
-  function renderLogin(message) { state = C.empty(); cache = {}; page = ''; document.body.className = ''; $('#app').innerHTML = loginHTML(message); bindLogin(); }
+  const ENTRY_TITLE = { visit: '심방사역자', new: '새가족위원', admin: '관리자' };
+  function renderLogin(message, fill) { state = C.empty(); cache = {}; page = ''; activeRole = ''; document.body.className = ''; let f = ''; try { f = new URLSearchParams(location.search).get('for') || ''; } catch (_) { } setTitle(ENTRY_TITLE[f] || ''); $('#app').innerHTML = loginHTML(message); bindLogin(fill); }
 
   async function enter() {
     $('#app').innerHTML = '<main class="login"><p class="muted">불러오는 중…</p></main>';
@@ -124,14 +161,20 @@
     const alerts = root.NotifyCore ? root.NotifyCore.compute(state, m).length : 0;
     const P = Pages[page];
     return `<header class="top"><div class="brand"><span class="brand-mark sm" aria-hidden="true">✦</span><span>함께 돌봄</span><span class="ministry-tag">${esc(ministry)}</span></div>
-      <div class="who"><b>${esc(m.name || '')}</b> <span class="muted">${esc(ROLE[m.role])}${m.district ? ' · ' + esc(m.district) : ''}</span></div>
+      <div class="who"><b>${esc(m.name || '')}</b> <span class="muted">${esc(ROLE[m.role])}${m.district && ['district_pastor', 'visitor', 'committee'].includes(m.role) ? ' · ' + esc(m.district) : ''}</span></div>
       <div class="top-acts"><span id="syncState" class="muted small" role="status">서버와 연결됨</span><button id="alertsBtn" class="${page === 'alerts' ? 'primary' : 'quiet'}" aria-label="알림 ${alerts}건">알림${alerts ? ` <span class="badge">${alerts}</span>` : ''}</button><button id="refreshBtn" class="quiet" title="다른 기기에서 바꾼 내용을 불러옵니다" aria-label="새로고침"><span aria-hidden="true">↻</span><span class="lbl">새로고침</span></button><button id="logoutBtn" class="quiet">로그아웃</button></div></header>
+      ${roleBar(m)}
       ${m.role === 'admin' ? adminShell(m, P) : nav.length > 1 ? `<nav class="tabs" aria-label="메뉴">${nav.map(id => `<button data-page="${id}" class="${id === page ? 'active' : ''}" ${id === page ? 'aria-current="page"' : ''}>${esc(Pages[id]?.label || id)}</button>`).join('')}</nav>` : ''}
-      ${m.role === 'admin' ? '' : `<main id="main" class="page">${P ? P.render(ctx()) : ''}</main>`}
+      ${m.role === 'admin' ? '' : `${m.role === 'visit_lead' ? districtBar(m).replace('class="admin-district"', 'class="admin-district lead"') : ''}<main id="main" class="page">${P ? P.render(ctx()) : ''}</main>`}
       <footer class="credit">${esc(CREDIT)}</footer>`;
   }
+  // 겸직이면 맡은 역할을 바꾸는 단추(한 줄). 고른 역할의 메뉴와 범위가 보입니다.
+  function roleBar(m) {
+    if (!m.roles || m.roles.length < 2) return '';
+    return `<div class="role-bar"><span class="role-bar-label">맡은 역할</span><div class="seg" role="group" aria-label="맡은 역할 바꾸기">${m.roles.map(r => `<button type="button" data-role="${r}" class="${r === m.role ? 'active' : ''}" ${r === m.role ? 'aria-pressed="true"' : 'aria-pressed="false"'}>${esc(ROLE[r] || r)}${r !== 'admin' && m.district && ['district_pastor', 'visitor', 'committee'].includes(r) ? ' · ' + esc(m.district) : ''}</button>`).join('')}</div></div>`;
+  }
   function districtBar(m) {
-    return `${DISTRICT_PAGES.includes(page) ? `<div class="admin-district"><label>교구 <select id="adminDistrict">${C.groups(state).map(g => `<option ${g.name === m.district ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select></label><span class="muted small">최고 관리자: 고른 교구의 화면으로 봅니다</span></div>` : ''}`;
+    return `${DISTRICT_PAGES.includes(page) ? `<div class="admin-district"><label>교구 <select id="adminDistrict">${C.groups(state).map(g => `<option ${g.name === m.district ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select></label><span class="muted small">${m.role === 'admin' ? '최고 관리자' : '심방 총괄'}: 고른 교구의 화면으로 봅니다</span></div>` : ''}`;
   }
   function adminShell(m, P) {
     const label = id => Pages[id]?.label || id, area = areaOf(page) || ADMIN_AREAS[0], cur = area.items.find(([id]) => id === page);
@@ -147,9 +190,11 @@
   function render() {
     if (!me().signedIn) return renderLogin();
     document.body.className = 'm-' + MINISTRY[me().role]?.[1];
+    setTitle(TITLE[me().role] || '');
     $('#app').innerHTML = shellHTML();
     const top = $('.top'); if (top) document.documentElement.style.setProperty('--top-h', top.offsetHeight + 'px');
     $$('[data-page]').forEach(b => b.onclick = () => go(b.dataset.page));
+    $$('[data-role]').forEach(b => b.onclick = () => switchRole(b.dataset.role));
     $('#refreshBtn').onclick = () => refresh();
     const ad = $('#adminDistrict'); if (ad) ad.onchange = () => { adminDistrict = ad.value; render(); };
     $$('[data-area]').forEach(b => b.onclick = () => { const a = ADMIN_AREAS.find(x => x.key === b.dataset.area); if (a && areaOf(page) !== a) go(a.items[0][0]); });
@@ -167,6 +212,17 @@
       }).catch(() => { });
       navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadOld) showUpdate(); });
     }
+    // 바로 로그인 링크(…#n=이름&c=코드): 읽은 뒤 주소창에서 곧바로 지웁니다(홈 화면에 코드가 든 주소가 남지 않게).
+    let inv = null;
+    try { if (/[#&]c=/.test(location.hash)) { inv = readInvite(location.hash); root.history.replaceState(null, '', location.pathname + location.search); } } catch (_) { }
+    if (inv) {
+      const cur = me();
+      if (cur.signedIn && inv.name && cur.name.replace(/\s+/g, '') !== inv.name.replace(/\s+/g, '')) await store.signOut(); // 다른 분의 링크
+      if (!me().signedIn) {
+        renderLogin('링크로 들어오는 중입니다…', inv);
+        try { await store.codeLogin(inv.name, inv.code); } catch (e) { return renderLogin(e.message + ' 이름과 코드를 확인하고 로그인을 눌러 주세요.', inv); }
+      }
+    }
     if (me().signedIn) await enter(); else renderLogin();
   }
   // 새 버전 알림 띠: 누르면 새로 고침(쓰던 내용이 있을 수 있어 저절로 새로 고치지는 않음)
@@ -177,6 +233,6 @@
     bar.querySelector('button').onclick = () => location.reload();
     document.body.appendChild(bar);
   }
-  root.HamkkeApp = { boot, ctx, NAV, ADMIN_AREAS, showUpdate, get state() { return state; } };
+  root.HamkkeApp = { boot, ctx, NAV, switchRole, ADMIN_AREAS, showUpdate, get state() { return state; } };
   if (!root.HAMKKE_NO_BOOT) document.addEventListener('DOMContentLoaded', boot);
 })(window);

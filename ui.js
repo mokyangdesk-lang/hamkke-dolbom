@@ -5,8 +5,8 @@
   const $ = (s, el) => (el || doc()).querySelector(s);
   const $$ = (s, el) => [...(el || doc()).querySelectorAll(s)];
   const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const ROLE = { admin: '전체 관리자', newcomer_pastor: '새가족 담당 목사', newcomer_admin: '새가족 관리자', district_pastor: '교구 목사', committee: '새가족위원', visitor: '심방사역자' };
-  const MINISTRY = { admin: ['관리', 'admin'], newcomer_pastor: ['새가족', 'new'], newcomer_admin: ['새가족', 'new'], district_pastor: ['심방', 'visit'], committee: ['새가족', 'new'], visitor: ['심방', 'visit'] };
+  const ROLE = { admin: '전체 관리자', newcomer_pastor: '새가족 담당 목사', newcomer_admin: '새가족 관리자', district_pastor: '교구 목사', committee: '새가족위원', visitor: '심방사역자', visit_lead: '심방 총괄' };
+  const MINISTRY = { admin: ['관리', 'admin'], newcomer_pastor: ['새가족', 'new'], newcomer_admin: ['새가족', 'new'], district_pastor: ['심방', 'visit'], committee: ['새가족', 'new'], visitor: ['심방', 'visit'], visit_lead: ['심방', 'visit'] };
   const CREDIT = 'AI 목양지원센터 · mokyangdesk.com';
 
   function toast(message) {
@@ -32,6 +32,17 @@
   }
   // 코드 입력: 대문자로 바꾸고 5자리마다 - 를 넣습니다.
   function formatCode(v) { const s = String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 20); return (s.match(/.{1,5}/g) || []).join('-'); }
+  // 받은 문자에서 이름·코드 읽기: 바로 로그인 링크(#n=…&c=…) 또는 "이름: … / 코드: …" 줄. 문자 전체를 붙여 넣어도 됩니다.
+  function readInvite(text) {
+    const t = String(text || '');
+    let name = '', code = '';
+    const h = t.match(/[#&]n=([^&\s]+)&c=([A-Za-z0-9-]{20,24})/);
+    if (h) { try { name = decodeURIComponent(h[1]); } catch (_) { name = h[1]; } code = h[2]; }
+    if (!code) { const c = t.match(/\b([A-Za-z2-9]{5})-?([A-Za-z2-9]{5})-?([A-Za-z2-9]{5})-?([A-Za-z2-9]{5})\b/); if (c) code = c.slice(1).join(''); }
+    if (!name) { const n = t.match(/이름\s*[:：]\s*([^\n\r]+)/); if (n) name = n[1].split(/코드\s*[:：]|주소\s*[:：]/)[0].trim(); }
+    code = formatCode(code);
+    return code.length === 23 ? { name: name.replace(/\s+/g, ' ').trim(), code } : null;
+  }
   async function copyText(text, btn) {
     try { await root.navigator.clipboard.writeText(text); toast('복사했습니다.'); }
     catch (_) { const el = btn?.closest('.code-box')?.querySelector('.code'); if (el && root.getSelection) { const r = doc().createRange(); r.selectNodeContents(el); const s = root.getSelection(); s.removeAllRanges(); s.addRange(r); } toast('복사가 막혀 있습니다. 코드를 눌러 선택한 뒤 직접 복사해 주세요.'); }
@@ -57,5 +68,10 @@
     q.addEventListener('compositionend', run);
     q.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); clearTimeout(timer); apply(q.value.trim()); render(); const n = $('#' + id); if (n) n.focus(); } });
   }
-  root.UI = { $, $$, esc, ROLE, MINISTRY, CREDIT, toast, dialog, closeDialog, ask, formatCode, copyText, matches, liveSearch };
+  // 브라우저 탭·홈 화면에 붙는 역할 이름(새가족 담당 목사·새가족 관리자는 '새가족팀')
+  const TITLE = { admin: '관리자', newcomer_pastor: '새가족팀', newcomer_admin: '새가족팀', district_pastor: '교구 목사', committee: '새가족위원', visitor: '심방사역자', visit_lead: '심방 총괄' };
+  const setTitle = label => { try { root.document.title = label ? '함께 돌봄 · ' + label : '함께 돌봄'; } catch (_) { } };
+  // 계정의 모든 역할(기본 역할 + 겸직)
+  const rolesOf = x => [...new Set([x?.role, ...(Array.isArray(x?.extra_roles) ? x.extra_roles : [])].filter(Boolean))];
+  root.UI = { TITLE, setTitle, rolesOf, $, $$, esc, ROLE, MINISTRY, CREDIT, toast, dialog, closeDialog, ask, formatCode, readInvite, copyText, matches, liveSearch };
 })(typeof window !== 'undefined' ? window : globalThis);

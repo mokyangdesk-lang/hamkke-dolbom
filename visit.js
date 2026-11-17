@@ -242,10 +242,10 @@
   // 교구 목사: 사역자별 승인 여부와 보고서 보기(승인 전 초안은 서버가 보내지 않음)
   let pastorWeek = 0, openReport = '';
   Pages.reports = {
-    get label() { return root.HamkkeApp?.ctx().me.role === 'admin' ? '심방 보고 받기' : '보고 받기'; },
+    get label() { return ['admin', 'visit_lead'].includes(root.HamkkeApp?.ctx().me.role) ? '심방 보고 받기' : '보고 받기'; },
     render(ctx) {
       const s = ctx.state, w = K.reportWindow(pastorWeek), weeks = [0, 1, 2, 3, 4, 5, 6, 7].map(n => K.reportWindow(n));
-      const visitors = (ctx.cache.staff || []).filter(x => x.role === 'visitor' && x.district === ctx.me.district);
+      const visitors = (ctx.cache.staff || []).filter(x => root.UI.rolesOf(x).includes('visitor') && x.district === ctx.me.district);
       if (openReport) {
         const r = s.reports.find(x => x.id === openReport);
         const doc = r?.type === 'newcomer' ? root.HamkkeNewcomer.reportDoc(r) : r ? reportDoc(r) : '';
@@ -254,7 +254,7 @@
       }
       // 사역자(심방)·위원(새가족)별로 이 주의 가장 나중 보고(수정본 포함)
       const section = (type, role, title, empty, line) => {
-        const staff = (ctx.cache.staff || []).filter(x => x.role === role && x.district === ctx.me.district);
+        const staff = (ctx.cache.staff || []).filter(x => root.UI.rolesOf(x).includes(role) && x.district === ctx.me.district);
         const latest = new Map();
         for (const r of s.reports.filter(r => r.type === type && r.weekKey === w.key)) { const old = latest.get(r.authorId); if (!old || String(r.approvedAt) > String(old.approvedAt)) latest.set(r.authorId, r); }
         const rows = [...staff.map(v => ({ name: v.display_name, r: latest.get(v.user_id) })), ...[...latest.values()].filter(r => !staff.some(v => v.user_id === r.authorId)).map(r => ({ name: r.authorName, r }))];
@@ -265,7 +265,7 @@
       <p class="subtitle">${esc(ctx.me.district)}의 주간 보고입니다. 사역자·위원이 승인한 보고만 보입니다.</p>
       <label class="inline">주간<select id="pastorWeek">${weeks.map((x, i) => `<option value="${i}" ${i === pastorWeek ? 'selected' : ''}>${esc(x.label)}</option>`).join('')}</select></label>
       ${section('visit', 'visitor', '심방 보고', '이 교구에 등록된 심방사역자가 없습니다.', x => `연락 ${x.attempts}회 · 성도 ${x.people}명 · 통화·방문 ${x.connected}회`)}
-      ${section('newcomer', 'committee', '새가족 보고 (파송 새가족위원)', '이 교구에서 파송한 새가족위원이 없습니다.', x => `진행 ${x.active}명 · 이번 주 진행 ${x.moved}명 · 늦어짐 ${x.late}`)}`;
+      ${ctx.me.role === 'visit_lead' ? '' : section('newcomer', 'committee', '새가족 보고 (파송 새가족위원)', '이 교구에서 파송한 새가족위원이 없습니다.', x => `진행 ${x.active}명 · 이번 주 진행 ${x.moved}명 · 늦어짐 ${x.late}`)}`;
     },
     async bind(ctx) {
       const sel = $('#pastorWeek'); if (sel) sel.onchange = () => { pastorWeek = Number(sel.value); ctx.render(); };

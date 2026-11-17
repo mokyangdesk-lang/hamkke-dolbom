@@ -2,15 +2,22 @@
    어떤 계정이 무엇을 할 수 있는지는 서버가 다시 판정합니다. */
 (function (root) {
   'use strict';
-  const { $, $$, esc, ROLE, toast, dialog, closeDialog, ask, copyText, matches, liveSearch } = root.UI;
+  const { $, $$, esc, ROLE, toast, dialog, closeDialog, ask, copyText, matches, liveSearch, rolesOf } = root.UI;
   const store = root.HamkkeStore, C = root.MinistryCore;
   const Pages = root.HamkkePages = root.HamkkePages || {};
-  const ISSUABLE = ['visitor', 'committee', 'district_pastor', 'newcomer_admin', 'newcomer_pastor'];
+  const ISSUABLE = ['visitor', 'committee', 'district_pastor', 'visit_lead', 'newcomer_admin', 'newcomer_pastor'];
+  const roleLabel = x => rolesOf(x).map(r => ROLE[r] || r).join(' + '); // 겸직은 '교구 목사 + 새가족 담당 목사'
+  const needsDistrict = roles => roles.some(r => NEEDS_DISTRICT.includes(r));
   const NEEDS_DISTRICT = ['visitor', 'committee', 'district_pastor'];
-  const ACTION = { create: '등록', reissue: '코드 다시 발급', suspend: '접근 중지', resume: '다시 허용', update: '교구·역할 변경', login: '로그인' };
+  const ACTION = { myRoles: '관리자 겸직', create: '등록', reissue: '코드 다시 발급', suspend: '접근 중지', resume: '다시 허용', update: '교구·역할 변경', login: '로그인' };
   const date = v => String(v || '').slice(0, 10);
   const uid = () => (root.crypto?.randomUUID ? root.crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
 
+  // 겸직 역할 고르기(기본 역할은 빼고 보여 줌). 교구는 계정마다 하나라서, 교구가 필요한 역할은 모두 같은 교구를 씁니다.
+  const extrasHTML = (id, primary, sel = []) => `<fieldset class="field-set extras" id="${id}"><legend>겸직 역할 <span class="muted small">(선택 · 여러 개 가능)</span></legend>
+    <div class="choice-grid">${ISSUABLE.filter(r => r !== primary).map(r => `<label class="check"><input type="checkbox" name="extra" value="${r}" ${sel.includes(r) ? 'checked' : ''}> ${ROLE[r]}</label>`).join('')}</div>
+    <p class="muted small">예: 교구 목사이면서 새가족 담당 목사. 로그인하면 위쪽에서 역할을 바꿔 가며 씁니다.</p></fieldset>`;
+  const checkedExtras = box => $$('input[name=extra]:checked', box).map(x => x.value);
   async function loadStaff(ctx, force) {
     if (!force && ctx.cache.staff) return ctx.cache.staff;
     try { ctx.cache.staff = await store.staffList(); } catch (e) { ctx.cache.staff = []; toast('담당자 목록을 불러오지 못했습니다: ' + e.message); }
@@ -23,21 +30,24 @@
 
   // 접속 코드는 이 창에서 한 번만 보여 줍니다. 닫으면 화면에서도 지워집니다.
   // 코드 안내 문자: 역할에 맞는 주소 + 이름 + 코드. 문자 앱으로 넘겨줄 뿐, 코드는 어디에도 저장하지 않습니다.
-  function codeMessage(name, role, code) {
+  const entryOf = roles => { const r = [].concat(roles); return r.includes('visitor') ? '?for=visit' : r.includes('committee') ? '?for=new' : ''; };
+  // 바로 로그인 링크: 이름·코드를 주소의 # 뒤에 넣습니다(# 뒤는 서버로 전송되지 않음). 앱이 읽은 뒤 주소창에서 지웁니다.
+  const loginLink = (name, roles, code) => { const base = root.location.origin + root.location.pathname.replace(/[^/]*$/, ''); return `${base}${entryOf(roles)}#n=${encodeURIComponent(name)}&c=${String(code).replace(/[^A-Z0-9]/gi, '')}`; };
+  function codeMessage(name, roles, code) {
     const base = root.location.origin + root.location.pathname.replace(/[^/]*$/, '');
-    const q = role === 'visitor' ? '?for=visit' : role === 'committee' ? '?for=new' : '';
-    return `[함께 돌봄] ${name}님 접속 안내\n주소: ${base}${q}\n이름: ${name}\n코드: ${code}\n코드는 본인만 보관해 주세요. 사용 안내: ${base}guide/`;
+    return `[함께 돌봄] ${name}님 접속 안내\n아래 링크를 누르면 바로 들어가집니다.\n${loginLink(name, roles, code)}\n\n직접 넣으실 때\n주소: ${base}${entryOf(roles)}\n이름: ${name}\n코드: ${code}\n\n이 문자는 본인만 보관해 주세요. 사용 안내: ${base}guide/`;
   }
   // 주소만 다시 보내는 안내(코드 없음). 담당자 목록의 "문자" 버튼에서 씁니다.
-  function linkMessage(name, role) {
+  function linkMessage(name, roles) {
     const base = root.location.origin + root.location.pathname.replace(/[^/]*$/, '');
-    const q = role === 'visitor' ? '?for=visit' : role === 'committee' ? '?for=new' : '';
+    const q = entryOf(roles);
     return `[함께 돌봄] ${name}님, 접속 주소를 다시 보내 드립니다.\n주소: ${base}${q}\n사용 안내(홈 화면 추가 방법): ${base}guide/\n로그인은 이름과 받으신 코드로 하시면 됩니다. 코드를 잊으셨으면 말씀해 주세요.`;
   }
-  function showCode(title, name, code, role, phone) {
-    const M = root.Messages, msg = codeMessage(name, role, code);
+  function showCode(title, name, code, roles, phone) {
+    const M = root.Messages, msg = codeMessage(name, roles, code);
     const body = dialog(title, `<p><b>${esc(name)}</b>님의 접속 코드입니다. <b>이 창을 닫으면 다시 볼 수 없습니다.</b></p>
       <div class="code-box"><span class="code">${esc(code)}</span><button type="button" id="copyCode">복사</button></div>
+      <p class="small">안내 문자에는 <b>누르면 바로 들어가는 링크</b>가 함께 들어갑니다. 코드를 직접 칠 필요가 없습니다.</p>
       <div class="acts">${phone ? `<a class="button primary" id="smsCode" href="${esc(M.smsHref(phone, msg))}">문자로 보내기 · ${esc(phone)}</a>` : '<span class="muted small">휴대전화를 넣어 두면 여기서 바로 문자로 보낼 수 있습니다.</span>'}<button type="button" id="copyMsg">안내 문구 복사</button></div>
       <p class="notice">코드는 본인에게만 전해 주세요(단톡방에 올리지 마세요). 문자 앱이 열려도 실제로 보냈는지는 문자 앱에서 확인해 주세요. 잃어버리면 새로 발급하며, 그때 이 코드는 쓸 수 없게 됩니다.</p>
       <div class="acts"><button type="button" class="primary" id="codeDone">전달했습니다 · 닫기</button></div>`);
@@ -51,21 +61,22 @@
   const ROLE_ALIAS = {
     심방사역자: 'visitor', 심방: 'visitor', 새가족위원: 'committee', 새가족위원회: 'committee',
     교구목사: 'district_pastor', 목사: 'district_pastor', 교구담당목사: 'district_pastor', 전도사: 'district_pastor', 교구전도사: 'district_pastor',
-    새가족관리자: 'newcomer_admin', 새가족팀: 'newcomer_admin', 새가족임원: 'newcomer_admin', 임원: 'newcomer_admin', 새가족담당목사: 'newcomer_pastor', 새가족목사: 'newcomer_pastor',
+    심방총괄: 'visit_lead', 심방총괄목사: 'visit_lead', 총괄: 'visit_lead', 새가족관리자: 'newcomer_admin', 새가족팀: 'newcomer_admin', 새가족임원: 'newcomer_admin', 임원: 'newcomer_admin', 새가족담당목사: 'newcomer_pastor', 새가족목사: 'newcomer_pastor',
   };
   const roleOf = v => { const k = String(v || '').replace(/\s+/g, ''); return ISSUABLE.find(r => ROLE[r].replace(/\s+/g, '') === k) || ROLE_ALIAS[k] || ''; };
   const ROLE_ORDER = r => ISSUABLE.indexOf(r);
   // 담당자 네 묶음: 목회자 · 심방사역자 · 새가족위원 · 새가족 임원
-  const STAFF_CATS = [['pastor', '목회자', ['district_pastor', 'newcomer_pastor']], ['visitor', '심방사역자', ['visitor']], ['committee', '새가족위원', ['committee']], ['officer', '새가족 임원', ['newcomer_admin']]];
+  const STAFF_CATS = [['pastor', '목회자', ['district_pastor', 'newcomer_pastor', 'visit_lead']], ['visitor', '심방사역자', ['visitor']], ['committee', '새가족위원', ['committee']], ['officer', '새가족 임원', ['newcomer_admin']]];
   const catOf = role => STAFF_CATS.find(c => c[2].includes(role)) || STAFF_CATS[0];
   let staffView = 'category', staffCat = '';
   let staffImport = null, staffDone = null; // 미리 보기 / 발급 결과(코드는 이 화면에서만 보임)
   function downloadStaffTemplate(ctx) {
     const X = root.XLSX, book = X.utils.book_new(), d = C.groups(ctx.state).map(x => x.name);
-    X.utils.book_append_sheet(book, X.utils.aoa_to_sheet([STAFF_HEAD, ['홍길동', '심방사역자', d[0] || '1교구', '010-0000-0000'], ['김은혜', '새가족위원', d[0] || '1교구', ''], ['이목자', '교구 목사', d[0] || '1교구', ''], ['박새봄', '새가족 관리자', '', '']]), STAFF_SHEET);
+    X.utils.book_append_sheet(book, X.utils.aoa_to_sheet([STAFF_HEAD, ['홍길동', '심방사역자', d[0] || '1교구', '010-0000-0000'], ['김은혜', '새가족위원', d[0] || '1교구', ''], ['이목자', '교구 목사', d[0] || '1교구', ''], ['박새봄', '새가족 관리자', '', ''], ['최겸직', '교구 목사, 새가족 담당 목사', d[1] || d[0] || '2교구', '']]), STAFF_SHEET);
     X.utils.book_append_sheet(book, X.utils.aoa_to_sheet([['항목', '안내'],
       ['이름', '본인이 로그인할 때 쓰는 이름입니다. 띄어쓰기까지 본인에게 그대로 알려 주세요.'],
-      ['역할', '심방사역자 · 새가족위원 · 교구 목사 · 새가족 관리자 · 새가족 담당 목사 (목사·교구목사는 교구 목사로 등록)'],
+      ['역할', '심방사역자 · 새가족위원 · 교구 목사 · 심방 총괄 · 새가족 관리자 · 새가족 담당 목사 (목사·교구목사는 교구 목사로 등록)'],
+      ['겸직', '한 분이 여러 역할을 맡으면 역할 칸에 쉼표로 이어 적습니다. 예: 교구 목사, 새가족 담당 목사, 새가족 관리자 (앞의 것이 기본 역할)'],
       ['교구', `심방사역자·새가족위원·교구 목사는 꼭 적습니다(${d.join(', ')}). 새가족 관리자·새가족 담당 목사는 비워 둡니다(모든 교구의 새가족을 봄).`],
       ['휴대전화', '선택. 적어 두면 발급 후 코드를 바로 문자로 보낼 수 있습니다.'],
       ['예시 줄', '2~5행의 예시는 지우고 적어 주세요.'],
@@ -82,12 +93,14 @@
     rows.forEach((r, i) => {
       const line = `${i + 2}행`, nm = String(r['이름'] || '').replace(/\s+/g, ' ').trim(), rawRole = String(r['역할'] || '').trim();
       if (!nm && !rawRole && !String(r['교구'] || '').trim()) return;
-      if (['홍길동', '김은혜', '이목자', '박새봄'].includes(nm) && String(r['휴대전화'] || '').includes('0000-0000')) return; // 양식 예시 줄
-      const role = roleOf(rawRole), phone = String(r['휴대전화'] || '').trim();
-      let district = NEEDS_DISTRICT.includes(role) ? C.matchDistrict(String(r['교구'] || '').trim(), known) : '';
+      if (['홍길동', '김은혜', '이목자', '박새봄', '최겸직'].includes(nm) && String(r['휴대전화'] || '').includes('0000-0000')) return; // 양식 예시 줄
+      const parts = rawRole.split(/[,，、·\/+]|\s및\s|\n/).map(x => x.trim()).filter(Boolean), list = parts.map(roleOf);
+      const role = list[0] || '', extras = [...new Set(list.slice(1))].filter(x => x && x !== role), phone = String(r['휴대전화'] || '').trim();
+      let district = needsDistrict([role, ...extras]) ? C.matchDistrict(String(r['교구'] || '').trim(), known) : '';
       if (!nm) return errors.push(`${line}: 이름이 비어 있습니다.`);
-      if (!role) return errors.push(`${line} ${nm}: 역할 "${rawRole}"을(를) 알 수 없습니다. 심방사역자 · 새가족위원 · 교구 목사 · 새가족 관리자 · 새가족 담당 목사 중에서 적어 주세요.`);
-      if (NEEDS_DISTRICT.includes(role) && !district) return errors.push(`${line} ${nm}: ${ROLE[role]}는 교구가 필요합니다.`);
+      const bad = parts.filter((x, i) => !list[i]);
+      if (!role || bad.length) return errors.push(`${line} ${nm}: 역할 "${bad[0] || rawRole}"을(를) 알 수 없습니다. 심방사역자 · 새가족위원 · 교구 목사 · 심방 총괄 · 새가족 관리자 · 새가족 담당 목사 중에서 적어 주세요.`);
+      if (needsDistrict([role, ...extras]) && !district) return errors.push(`${line} ${nm}: ${[role, ...extras].filter(x => NEEDS_DISTRICT.includes(x)).map(x => ROLE[x]).join('·')}는 교구가 필요합니다.`);
       if (district && known.length && !known.includes(district)) return errors.push(`${line} ${nm}: "${district}"는 등록된 교구가 아닙니다(${known.join(', ')}).`);
       if (phone && phone.replace(/\D/g, '').length < 9) warnings.push(`${line} ${nm}: 휴대전화 "${phone}"가 짧습니다. 문자 보내기가 안 될 수 있습니다.`);
       const key = nm.replace(/\s+/g, '') + '|' + role + '|' + district;
@@ -97,7 +110,7 @@
       if (dup) return skipped.push(`${nm} (${ROLE[role]}${district ? ' · ' + district : ''}) — 이미 등록되어 있어 건너뜁니다.`);
       const same = existing.find(s => s.display_name.replace(/\s+/g, '') === nm.replace(/\s+/g, ''));
       if (same) warnings.push(`${line} ${nm}: 같은 이름의 담당자(${ROLE[same.role] || same.role}${same.district ? ' · ' + same.district : ''})가 이미 있습니다. 동명이인이면 그대로 등록됩니다.`);
-      items.push({ name: nm, role, district, phone });
+      items.push({ name: nm, role, extra_roles: extras, district, phone });
     });
     items.sort((a, b) => String(a.district).localeCompare(String(b.district), 'ko', { numeric: true }) || ROLE_ORDER(a.role) - ROLE_ORDER(b.role) || a.name.localeCompare(b.name, 'ko'));
     return { items, errors, warnings, skipped, sheet: name };
@@ -111,7 +124,7 @@
     if (p && !d) {
       h += `<h3>미리 보기 ${p.sheet ? '· ' + esc(p.sheet) + ' 시트' : ''}</h3>
         <div class="stats"><div class="stat"><b>${p.items.length}</b>새로 등록</div><div class="stat"><b>${p.skipped.length}</b>이미 등록(건너뜀)</div><div class="stat ${p.errors.length ? 'bad' : ''}"><b>${p.errors.length}</b>고칠 것</div></div>
-        ${p.items.length ? `<p>${roleCount(p.items)}</p><div class="table-wrap"><table><thead><tr><th>교구</th><th>역할</th><th>이름</th><th>휴대전화</th></tr></thead><tbody>${p.items.map(x => `<tr><td>${esc(x.district || '모든 교구(새가족)')}</td><td>${esc(ROLE[x.role])}</td><td><b>${esc(x.name)}</b></td><td>${esc(x.phone || '-')}</td></tr>`).join('')}</tbody></table></div>` : ''}
+        ${p.items.length ? `<p>${roleCount(p.items)}</p><div class="table-wrap"><table><thead><tr><th>교구</th><th>역할</th><th>이름</th><th>휴대전화</th></tr></thead><tbody>${p.items.map(x => `<tr><td>${esc(x.district || '모든 교구')}</td><td>${esc(roleLabel(x))}</td><td><b>${esc(x.name)}</b></td><td>${esc(x.phone || '-')}</td></tr>`).join('')}</tbody></table></div>` : ''}
         ${p.errors.length ? `<h3>고쳐야 할 것</h3><ul class="error-list">${p.errors.map(e => `<li>${esc(e)}</li>`).join('')}</ul><p class="muted small">엑셀을 고친 뒤 다시 올려 주세요. 고칠 것이 있으면 등록하지 않습니다.</p>` : ''}
         ${p.warnings.length ? `<h3>확인해 주세요</h3><ul class="warn-list">${p.warnings.map(e => `<li>${esc(e)}</li>`).join('')}</ul>` : ''}
         ${p.skipped.length ? `<details><summary>건너뛰는 분 ${p.skipped.length}명</summary><ul class="small">${p.skipped.map(e => `<li>${esc(e)}</li>`).join('')}</ul></details>` : ''}
@@ -123,9 +136,9 @@
       h += `<h3>발급 결과 · ${ok.length}명 완료${bad.length ? ` · <span class="danger">${bad.length}명 실패</span>` : ''}</h3>
         <p class="notice"><b>코드는 이 결과를 닫거나 새로고침하면 다시 볼 수 없습니다.</b> "코드 목록 엑셀로 받기"로 저장해 두거나 지금 문자로 보내 주세요. 받은 파일은 코드가 들어 있으니 다른 사람과 나누지 마세요.</p>
         <div class="acts"><button type="button" class="primary" id="staffCodes">코드 목록 엑셀로 받기</button><button type="button" class="quiet" id="staffClose">다 전달했습니다 · 닫기</button></div>
-        <div class="table-wrap"><table><thead><tr><th>교구</th><th>역할</th><th>이름</th><th>코드</th><th></th></tr></thead><tbody>${d.map((x, i) => `<tr><td>${esc(x.district || '모든 교구(새가족)')}</td><td>${esc(ROLE[x.role])}</td><td><b>${esc(x.name)}</b></td>
+        <div class="table-wrap"><table><thead><tr><th>교구</th><th>역할</th><th>이름</th><th>코드</th><th></th></tr></thead><tbody>${d.map((x, i) => `<tr><td>${esc(x.district || '모든 교구')}</td><td>${esc(roleLabel(x))}</td><td><b>${esc(x.name)}</b></td>
           <td>${x.code ? `<span class="code">${esc(x.code)}</span>` : `<span class="danger small">${esc(x.error || '실패')}</span>`}</td>
-          <td>${x.code ? (x.phone ? `<a class="button" href="${esc(root.Messages.smsHref(x.phone, codeMessage(x.name, x.role, x.code)))}">문자</a>` : `<button type="button" data-copycode="${i}">안내문 복사</button>`) : ''}</td></tr>`).join('')}</tbody></table></div>`;
+          <td>${x.code ? (x.phone ? `<a class="button" href="${esc(root.Messages.smsHref(x.phone, codeMessage(x.name, rolesOf(x), x.code)))}">문자</a>` : `<button type="button" data-copycode="${i}">안내문 복사</button>`) : ''}</td></tr>`).join('')}</tbody></table></div>`;
     }
     return h + '</section>';
   }
@@ -148,7 +161,7 @@
       const out = [], prog = $('#staffProgress');
       for (const [i, x] of list.entries()) {
         if (prog) prog.textContent = `${i + 1} / ${list.length} · ${x.name} 등록 중…`;
-        try { const r = await store.staff({ action: 'create', name: x.name, role: x.role, district: x.district, phone: x.phone }); out.push({ ...x, code: r.code }); }
+        try { const r = await store.staff({ action: 'create', name: x.name, role: x.role, extraRoles: x.extra_roles || [], district: x.district, phone: x.phone }); out.push({ ...x, code: r.code }); }
         catch (e) { out.push({ ...x, error: e.message }); }
       }
       staffDone = out; staffImport = null;
@@ -158,10 +171,10 @@
     const codes = $('#staffCodes');
     if (codes) codes.onclick = () => {
       const X = root.XLSX, book = X.utils.book_new(), ok = staffDone.filter(x => x.code);
-      X.utils.book_append_sheet(book, X.utils.aoa_to_sheet([['교구', '역할', '이름', '휴대전화', '코드', '안내 문자'], ...ok.map(x => [x.district || '모든 교구(새가족)', ROLE[x.role], x.name, x.phone, x.code, codeMessage(x.name, x.role, x.code)])]), '발급코드');
+      X.utils.book_append_sheet(book, X.utils.aoa_to_sheet([['교구', '역할', '이름', '휴대전화', '코드', '안내 문자'], ...ok.map(x => [x.district || '모든 교구', roleLabel(x), x.name, x.phone, x.code, codeMessage(x.name, rolesOf(x), x.code)])]), '발급코드');
       X.writeFile(book, `함께돌봄-담당자코드-${C.iso()}.xlsx`);
     };
-    $$('[data-copycode]').forEach(b => b.onclick = e => { const x = staffDone[+b.dataset.copycode]; copyText(codeMessage(x.name, x.role, x.code), e.target); });
+    $$('[data-copycode]').forEach(b => b.onclick = e => { const x = staffDone[+b.dataset.copycode]; copyText(codeMessage(x.name, rolesOf(x), x.code), e.target); });
     const close = $('#staffClose');
     if (close) close.onclick = async () => { if (await ask('발급 결과 닫기', '닫으면 이 코드들은 다시 볼 수 없습니다. 모두 전달했거나 엑셀로 받아 두셨나요?', '닫기', true)) { staffDone = null; redraw(); } };
   }
@@ -191,7 +204,8 @@
           <label>휴대전화 <span class="muted small">(코드 문자용, 선택)</span><input name="phone" inputmode="tel" autocomplete="off" maxlength="20" placeholder="010-0000-0000"></label>
           <label>역할<select name="role" id="createRole">${ISSUABLE.map(r => `<option value="${r}">${ROLE[r]}</option>`).join('')}</select></label>
           <label id="createDistrictWrap">교구<select name="district" id="createDistrict">${districtOptions(ctx, 'visitor')}</select></label>
-          <p id="createDistrictNote" class="muted small" hidden>새가족팀은 교구 없이 모든 교구의 새가족을 봅니다.</p>
+          <p id="createDistrictNote" class="muted small" hidden>새가족팀·심방 총괄은 교구 없이 모든 교구를 봅니다.</p>
+          <div id="createExtrasBox" style="grid-column:1/-1">${extrasHTML('createExtras', 'visitor')}</div>
           <div class="acts"><button class="primary" ${g.length ? '' : 'disabled'}>등록하고 코드 발급</button></div>
         </form>
         </details>
@@ -203,22 +217,26 @@
       const g = C.groups(ctx.state);
       $$('[data-go]').forEach(b => b.onclick = () => ctx.go(b.dataset.go));
       const role = $('#createRole'), dsel = $('#createDistrict');
-      const syncRole = () => { const need = NEEDS_DISTRICT.includes(role.value); $('#createDistrictWrap').hidden = !need; $('#createDistrictNote').hidden = need; dsel.innerHTML = districtOptions(ctx, role.value); };
+      const syncDistrict = () => { const roles = [role.value, ...checkedExtras($('#createExtrasBox'))], need = needsDistrict(roles), keep = dsel.value;
+        $('#createDistrictWrap').hidden = !need; $('#createDistrictNote').hidden = need;
+        dsel.innerHTML = districtOptions(ctx, roles.includes('visitor') ? 'visitor' : role.value, keep); };
+      const syncRole = () => { const keep = checkedExtras($('#createExtrasBox')).filter(r => r !== role.value); $('#createExtrasBox').innerHTML = extrasHTML('createExtras', role.value, keep);
+        $$('input[name=extra]', $('#createExtrasBox')).forEach(x => x.onchange = syncDistrict); syncDistrict(); };
       role.onchange = syncRole; syncRole();
       $('#staffCreate').onsubmit = async e => {
-        e.preventDefault(); const f = Object.fromEntries(new FormData(e.target));
+        e.preventDefault(); const fd = new FormData(e.target), f = Object.fromEntries(fd), extras = fd.getAll('extra').filter(r => r !== f.role);
         f.name = String(f.name || '').trim();
         if (!f.name) { toast('이름을 입력해 주세요. 담당자 본인이 로그인할 때 쓰는 이름입니다.'); $('#createName').focus(); return; }
-        if (NEEDS_DISTRICT.includes(f.role) && !f.district) { toast('교구를 골라 주세요. 교구가 없으면 먼저 "교구 설정"을 저장해 주세요.'); return; }
-        if (!NEEDS_DISTRICT.includes(f.role)) f.district = '';
+        if (needsDistrict([f.role, ...extras]) && !f.district) { toast('교구를 골라 주세요. 교구가 없으면 먼저 "교구 설정"을 저장해 주세요.'); return; }
+        if (!needsDistrict([f.role, ...extras])) f.district = '';
         const btn = $('button.primary', e.target); btn.disabled = true;
-        try { const r = await store.staff({ action: 'create', name: f.name, role: f.role, district: f.district, phone: f.phone || '' }); e.target.reset(); syncRole(); await loadStaff(ctx, true); list(); showCode('코드 발급', f.name, r.code, f.role, f.phone); }
+        try { const r = await store.staff({ action: 'create', name: f.name, role: f.role, extraRoles: extras, district: f.district, phone: f.phone || '' }); e.target.reset(); syncRole(); await loadStaff(ctx, true); list(); showCode('코드 발급', f.name, r.code, [f.role, ...extras], f.phone); }
         catch (err) { toast(err.message); } finally { btn.disabled = false; }
       };
       const all = () => ctx.cache.staff || [];
       const rowHTML = r => `<div class="row" id="st-${esc(r.user_id)}"><div class="grow"><b>${esc(r.display_name)}</b> <span class="chip ${r.status === 'active' ? 'ok' : 'warn'}">${r.status === 'active' ? '사용 중' : '접근 중지'}</span>
-          <div class="muted small">${esc(ROLE[r.role] || r.role)} · ${esc(r.district || '모든 교구 새가족')} · 코드 발급 ${esc(date(r.code_issued_at))}${r.phone ? ' · ' + esc(r.phone) : ''}</div></div>
-          <div class="acts">${r.phone ? `<a class="button" href="${esc(root.Messages.smsHref(r.phone, linkMessage(r.display_name, r.role)))}" title="주소 안내 문자(코드 없음)">주소 문자</a>` : '<button type="button" disabled title="전화번호가 없어 문자를 보낼 수 없습니다">주소 문자</button>'}<button data-st="edit" data-id="${r.user_id}">교구·역할·전화</button><button data-st="reissue" data-id="${r.user_id}">코드 다시 발급</button>
+          <div class="muted small">${esc(roleLabel(r))} · ${esc(r.district || '모든 교구')} · 코드 발급 ${esc(date(r.code_issued_at))}${r.phone ? ' · ' + esc(r.phone) : ''}</div></div>
+          <div class="acts">${r.phone ? `<a class="button" href="${esc(root.Messages.smsHref(r.phone, linkMessage(r.display_name, rolesOf(r))))}" title="주소 안내 문자(코드 없음)">주소 문자</a>` : '<button type="button" disabled title="전화번호가 없어 문자를 보낼 수 없습니다">주소 문자</button>'}<button data-st="edit" data-id="${r.user_id}">역할·교구·전화</button><button data-st="reissue" data-id="${r.user_id}">코드 다시 발급</button>
           <button data-st="${r.status === 'active' ? 'suspend' : 'resume'}" data-id="${r.user_id}" class="${r.status === 'active' ? 'danger' : ''}">${r.status === 'active' ? '접근 중지' : '다시 허용'}</button></div></div>`;
       // 교구별 한눈에: 줄 = 교구(+새가족팀), 칸 = 역할
       const overview = () => {
@@ -228,11 +246,11 @@
         const cell = (list, need) => list.length ? list.map(chip).join('') : need ? '<span class="chip warn">비어 있음</span>' : '<span class="muted">—</span>';
         const DR = ['district_pastor', 'visitor', 'committee'];
         const rows = g.map(d => { const here = S.filter(r => r.district === d.name);
-          return `<tr><th scope="row"><button type="button" class="link" data-dist="${esc(d.name)}">${esc(d.name)}</button></th>${DR.map(r => `<td>${cell(here.filter(x => x.role === r), r === 'district_pastor' || (r === 'visitor' && d.visitors))}</td>`).join('')}<td class="num">${here.length}</td></tr>`; }).join('');
-        const team = S.filter(r => !r.district);
+          return `<tr><th scope="row"><button type="button" class="link" data-dist="${esc(d.name)}">${esc(d.name)}</button></th>${DR.map(r => `<td>${cell(here.filter(x => rolesOf(x).includes(r)), r === 'district_pastor' || (r === 'visitor' && d.visitors))}</td>`).join('')}<td class="num">${here.length}</td></tr>`; }).join('');
+        const has = (x, r) => rolesOf(x).includes(r), team = S.filter(r => !r.district || ['newcomer_pastor', 'newcomer_admin', 'visit_lead'].some(k => has(r, k)));
         box.innerHTML = `<table class="overview"><thead><tr><th>교구</th><th>교구 목사</th><th>심방사역자</th><th>새가족위원</th><th class="num">합계</th></tr></thead><tbody>${rows}
-          <tr class="team"><th scope="row"><button type="button" class="link" data-dist="new">새가족팀</button></th><td colspan="3"><span class="muted small">새가족 담당 목사</span> ${cell(team.filter(x => x.role === 'newcomer_pastor'), false)} <span class="muted small" style="margin-left:10px">새가족 임원</span> ${cell(team.filter(x => x.role === 'newcomer_admin'), true)}</td><td class="num">${team.length}</td></tr></tbody></table>`;
-        const t = $('#staffTotals'); if (t) t.textContent = `모두 ${S.length}명 (${STAFF_CATS.map(([, l, roles]) => l + ' ' + S.filter(r => roles.includes(r.role)).length).join(' · ')})${S.length - act.length ? ' · 접근 중지 ' + (S.length - act.length) + '명' : ''}`;
+          <tr class="team"><th scope="row"><button type="button" class="link" data-dist="new">모든 교구</button></th><td colspan="3"><span class="muted small">새가족 담당 목사</span> ${cell(team.filter(x => has(x, 'newcomer_pastor')), false)} <span class="muted small" style="margin-left:10px">새가족 임원</span> ${cell(team.filter(x => has(x, 'newcomer_admin')), true)} <span class="muted small" style="margin-left:10px">심방 총괄</span> ${cell(team.filter(x => has(x, 'visit_lead')), false)}</td><td class="num">${team.length}</td></tr></tbody></table>`;
+        const t = $('#staffTotals'); if (t) t.textContent = `모두 ${S.length}명 (${STAFF_CATS.map(([, l, roles]) => l + ' ' + S.filter(r => rolesOf(r).some(x => roles.includes(x))).length).join(' · ')})${S.length - act.length ? ' · 접근 중지 ' + (S.length - act.length) + '명' : ''}`;
         $$('[data-dist]', box).forEach(b => b.onclick = () => { $('#staffFilter').value = b.dataset.dist; staffCat = ''; $('#staffSearch').value = ''; list(); $('#staffListCard').scrollIntoView({ block: 'start', behavior: 'smooth' }); });
         $$('[data-find]', box).forEach(b => b.onclick = () => { const r = S.find(x => x.user_id === b.dataset.find); $('#staffFilter').value = r.district || 'new'; staffCat = ''; $('#staffStatus').value = ''; $('#staffSearch').value = ''; list();
           const el = document.getElementById('st-' + r.user_id); if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1600); } });
@@ -244,18 +262,18 @@
         const base = all().filter(r => (!f || (f === 'new' ? !r.district : r.district === f)) && (!st || r.status === st) && (!q || matches({ name: r.display_name, phone: r.phone }, q)));
         const cats = $('#staffCats');
         if (cats) {
-          cats.innerHTML = [['', '전체', base.length], ...STAFF_CATS.map(([k, l, roles]) => [k, l, base.filter(r => roles.includes(r.role)).length])].map(([k, l, n]) => `<button type="button" data-scat="${k}" class="${staffCat === k ? 'active' : ''}">${l} <b>${n}</b></button>`).join('');
+          cats.innerHTML = [['', '전체', base.length], ...STAFF_CATS.map(([k, l, roles]) => [k, l, base.filter(r => rolesOf(r).some(x => roles.includes(x))).length])].map(([k, l, n]) => `<button type="button" data-scat="${k}" class="${staffCat === k ? 'active' : ''}">${l} <b>${n}</b></button>`).join('');
           $$('[data-scat]', cats).forEach(b => b.onclick = () => { staffCat = b.dataset.scat; list(); });
         }
-        const rows = base.filter(r => !staffCat || catOf(r.role)[0] === staffCat);
+        const rows = base.filter(r => !staffCat || rolesOf(r).some(x => catOf(x)[0] === staffCat));
         const order = ['district_pastor', 'newcomer_pastor', 'visitor', 'committee', 'newcomer_admin'];
         const dOrder = [...g.map(x => x.name), ''], dIdx = r => { const i = dOrder.indexOf(r.district || ''); return i < 0 ? 999 : i; };
         const sorted = list => list.sort((a, b) => dIdx(a) - dIdx(b) || order.indexOf(a.role) - order.indexOf(b.role) || a.display_name.localeCompare(b.display_name, 'ko'));
         const groupsHTML = staffView === 'category'
-          ? STAFF_CATS.map(([k, l, roles]) => [l, rows.filter(r => roles.includes(r.role))]).filter(x => x[1].length).map(([l, list]) => `<div class="staff-group"><h3>${esc(l)} <span class="muted small">${list.length}명</span></h3>
+          ? STAFF_CATS.map(([k, l, roles]) => [l, rows.filter(r => rolesOf(r).some(x => roles.includes(x)))]).filter(x => x[1].length).map(([l, list]) => `<div class="staff-group"><h3>${esc(l)} <span class="muted small">${list.length}명</span></h3>
               ${(() => { const by = [...new Set(sorted(list).map(r => r.district || ''))]; return by.map(d => `<p class="role-head">${esc(d || '모든 교구(새가족팀)')}</p><div class="list">${list.filter(r => (r.district || '') === d).map(rowHTML).join('')}</div>`).join(''); })()}</div>`).join('')
           : dOrder.map(d => [d, rows.filter(r => (r.district || '') === d)]).filter(x => x[1].length).map(([d, list]) => `<div class="staff-group"><h3>${esc(d || '새가족팀 · 모든 교구 새가족')} <span class="muted small">${list.length}명</span></h3>
-              ${STAFF_CATS.filter(c => list.some(x => c[2].includes(x.role))).map(([, l, roles]) => `<p class="role-head">${esc(l)}</p><div class="list">${sorted(list.filter(x => roles.includes(x.role))).map(rowHTML).join('')}</div>`).join('')}</div>`).join('');
+              ${STAFF_CATS.filter(c => list.some(x => rolesOf(x).some(y => c[2].includes(y)))).map(([, l, roles]) => `<p class="role-head">${esc(l)}</p><div class="list">${sorted(list.filter(x => rolesOf(x).some(y => roles.includes(y)))).map(rowHTML).join('')}</div>`).join('')}</div>`).join('');
         $('#staffList').innerHTML = !all().length ? '<p class="muted">아직 등록된 담당자가 없습니다. 아래 "담당자 등록"에서 한 명씩 또는 엑셀로 등록해 주세요.</p>'
           : !rows.length ? '<p class="muted">조건에 맞는 담당자가 없습니다.</p>' : groupsHTML;
         $$('[data-st]').forEach(b => b.onclick = () => act(b.dataset.st, all().find(x => x.user_id === b.dataset.id)));
@@ -265,7 +283,7 @@
           if (a === 'edit') return editDialog(ctx, r, async () => { await loadStaff(ctx, true); list(); });
           if (a === 'reissue') {
             if (!await ask('코드 다시 발급', `${r.display_name}님의 지금 코드는 바로 쓸 수 없게 되고, 로그인해 있는 기기도 끊깁니다. 새 코드를 발급할까요?`, '새로 발급')) return;
-            const x = await store.staff({ action: 'reissue', userId: r.user_id }); showCode('코드 다시 발급', r.display_name, x.code, r.role, r.phone);
+            const x = await store.staff({ action: 'reissue', userId: r.user_id }); showCode('코드 다시 발급', r.display_name, x.code, rolesOf(r), r.phone);
           } else if (a === 'suspend') {
             if (!await ask('접근 중지', `${r.display_name}님은 지금부터 어떤 기기에서도 자료를 볼 수 없습니다. 기록은 지워지지 않습니다.`, '접근 중지', true)) return;
             await store.staff({ action: 'suspend', userId: r.user_id }); toast('접근을 중지했습니다.');
@@ -288,19 +306,24 @@
   };
 
   function editDialog(ctx, r, done) {
-    const body = dialog(r.display_name + ' · 교구·역할 바꾸기', `<form id="editForm" class="stack">
+    const body = dialog(r.display_name + ' · 역할·교구 바꾸기', `<form id="editForm" class="stack">
       <label>역할<select name="role" id="editRole">${ISSUABLE.map(x => `<option value="${x}" ${x === r.role ? 'selected' : ''}>${ROLE[x]}</option>`).join('')}</select></label>
+      <div id="editExtrasBox"></div>
       <label id="editDistrictWrap">교구<select name="district" id="editDistrict"></select></label>
-      <p id="editNote" class="muted small" hidden>새가족팀은 교구 없이 모든 교구의 새가족을 봅니다.</p>
+      <p id="editNote" class="muted small" hidden>새가족팀·심방 총괄은 교구 없이 모든 교구를 봅니다.</p>
       <label>휴대전화 <span class="muted small">(코드 문자용)</span><input name="phone" id="editPhone" inputmode="tel" maxlength="20" value="${esc(r.phone || '')}" placeholder="010-0000-0000"></label>
       <p class="notice small">바꾸면 바로 다음 화면부터 새 범위의 자료만 보입니다. 코드는 그대로입니다.</p>
       <div class="acts"><button type="button" class="quiet" id="editCancel">취소</button><button class="primary">바꾸기</button></div></form>`);
-    const role = $('#editRole', body), sync = () => { const need = NEEDS_DISTRICT.includes(role.value); $('#editDistrictWrap', body).hidden = !need; $('#editNote', body).hidden = need; $('#editDistrict', body).innerHTML = districtOptions(ctx, role.value, r.district); };
-    role.onchange = sync; sync();
+    const role = $('#editRole', body), box = $('#editExtrasBox', body);
+    const syncDistrict = () => { const roles = [role.value, ...checkedExtras(box)], need = needsDistrict(roles), keep = $('#editDistrict', body).value || r.district;
+      $('#editDistrictWrap', body).hidden = !need; $('#editNote', body).hidden = need; $('#editDistrict', body).innerHTML = districtOptions(ctx, roles.includes('visitor') ? 'visitor' : role.value, keep); };
+    const sync = first => { const keep = (first ? (r.extra_roles || []) : checkedExtras(box)).filter(x => x !== role.value); box.innerHTML = extrasHTML('editExtras', role.value, keep);
+      $$('input[name=extra]', box).forEach(x => x.onchange = syncDistrict); syncDistrict(); };
+    role.onchange = () => sync(false); sync(true);
     $('#editCancel', body).onclick = closeDialog;
     $('#editForm', body).onsubmit = async e => {
-      e.preventDefault(); const f = Object.fromEntries(new FormData(e.target));
-      try { await store.staff({ action: 'update', userId: r.user_id, role: f.role, district: NEEDS_DISTRICT.includes(f.role) ? f.district : '', phone: f.phone || '' }); closeDialog(); toast('바꾸었습니다.'); await done(); }
+      e.preventDefault(); const fd = new FormData(e.target), f = Object.fromEntries(fd), extras = fd.getAll('extra').filter(x => x !== f.role);
+      try { await store.staff({ action: 'update', userId: r.user_id, role: f.role, extraRoles: extras, district: needsDistrict([f.role, ...extras]) ? f.district : '', phone: f.phone || '' }); closeDialog(); toast('바꾸었습니다.'); await done(); }
       catch (err) { toast(err.message); }
     };
   }
@@ -503,11 +526,11 @@
   Pages.assign = {
     label: '심방사역자 관리',
     render(ctx) {
-      const isAdmin = ctx.me.role === 'admin', g = C.groups(ctx.state).filter(x => x.visitors);
+      const isAdmin = ['admin', 'visit_lead'].includes(ctx.me.role), g = C.groups(ctx.state).filter(x => x.visitors); // 관리자·심방 총괄은 교구를 고름
       const district = isAdmin ? (assignDistrict || g[0]?.name || '') : ctx.me.district;
       const people = ctx.state.people.filter(p => !p.newcomer && p.district === district);
       const ids = new Set(people.map(p => p.id));
-      const visitors = (ctx.cache.staff || []).filter(s => s.role === 'visitor' && s.district === district);
+      const visitors = (ctx.cache.staff || []).filter(s => root.UI.rolesOf(s).includes('visitor') && s.district === district);
       const K = root.CareCore, since = C.iso(new Date(Date.now() - 7 * 86400000));
       const visits = ctx.state.visits.filter(v => ids.has(v.personId));
       const long = K ? K.longNoContact({ ...ctx.state, people }).length : 0;
@@ -676,6 +699,11 @@
       <p class="subtitle">전체 관리자가 이메일로 로그인할 때 쓰는 계정입니다.</p>
       <section class="card"><h2>로그인 이메일</h2><p><b>${esc(email || '이메일 정보 없음')}</b></p>
         <p class="muted small">이메일 주소를 바꾸거나 전체 관리자를 더 등록하는 일은 Supabase 관리 화면에서 합니다. 방법은 아래 "이메일 바꾸기 · 관리자 추가"를 펼쳐 보세요.</p></section>
+      <section class="card" id="myRolesCard"><h2>관리자 겸직</h2>
+        <p class="small">전체 관리자이면서 교구 목사 등을 함께 맡으시면 여기서 고릅니다. 관리자 권한은 그대로이고, 위쪽 "맡은 역할"에서 교구 목사 화면으로 바꿔 볼 수 있습니다.</p>
+        <form id="myRolesForm" class="stack">${extrasHTML('myExtras', 'admin', st.roles?.filter(r => r !== 'admin') || []).replace('<legend>겸직 역할', '<legend>함께 맡은 역할')}
+          <label id="myDistrictWrap">교구<select name="district" id="myDistrict">${districtOptions(ctx, 'district_pastor', st.district)}</select></label>
+          <div class="acts"><button class="primary">겸직 저장</button></div></form></section>
       <section class="card"><h2>비밀번호 바꾸기</h2>
         ${email ? `<form id="pwForm" class="stack" autocomplete="on">
           <input type="email" name="username" value="${esc(email)}" autocomplete="username" hidden>
@@ -694,6 +722,16 @@
         </ol></details></section>`;
     },
     bind(ctx) {
+      const mf = $('#myRolesForm');
+      if (mf) {
+        const sync = () => { $('#myDistrictWrap').hidden = !needsDistrict(checkedExtras(mf)); };
+        $$('input[name=extra]', mf).forEach(x => x.onchange = sync); sync();
+        mf.onsubmit = async e => {
+          e.preventDefault(); const extras = checkedExtras(mf), district = needsDistrict(extras) ? $('#myDistrict').value : '';
+          try { await store.staff({ action: 'myRoles', extraRoles: extras, district }); await store.loadMember(); toast(extras.length ? '겸직을 저장했습니다. 위쪽 "맡은 역할"에서 바꿔 볼 수 있습니다.' : '겸직을 뺐습니다.'); ctx.render(); }
+          catch (err) { toast(err.message); }
+        };
+      }
       const f = $('#pwForm'); if (!f) return;
       f.onsubmit = async e => {
         e.preventDefault(); const d = new FormData(f), cur = String(d.get('current')), next = String(d.get('next')), again = String(d.get('again'));
@@ -708,5 +746,5 @@
     },
   };
 
-  root.HamkkeAdmin = { showCode, downloadTemplate, detectSheets, uid };
+  root.HamkkeAdmin = { showCode, downloadTemplate, detectSheets, uid, parseStaff, roleLabel };
 })(window);

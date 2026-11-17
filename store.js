@@ -77,7 +77,7 @@
 
   async function loadMember() {
     const s = server();
-    const rows = await request('/rest/v1/church_members?select=church_id,user_id,role,district,staff_id&church_id=eq.' + encodeURIComponent(s.churchId));
+    const rows = await request('/rest/v1/church_members?select=*&church_id=eq.' + encodeURIComponent(s.churchId));
     if (!rows.length) { signOutLocal(); throw Error('이 교회의 사용 권한이 없거나 접근이 중지되었습니다. 관리자에게 문의해 주세요.'); }
     member = rows[0];
     return member;
@@ -189,11 +189,12 @@
     }
   }
   const staff = body => request('/functions/v1/staff-gateway', { method: 'POST', body: JSON.stringify({ churchId: server().churchId, ...body }) });
-  const staffList = () => request('/rest/v1/staff_accounts?church_id=eq.' + encodeURIComponent(server().churchId) + '&select=user_id,display_name,role,district,status,code_issued_at,phone&order=created_at.desc');
+  const staffList = () => request('/rest/v1/staff_accounts?church_id=eq.' + encodeURIComponent(server().churchId) + '&select=*&order=created_at.desc');
   const auditLog = () => request('/rest/v1/staff_audit?church_id=eq.' + encodeURIComponent(server().churchId) + '&select=at,action,target&order=at.desc&limit=30');
 
   const status = () => ({
     signedIn: !!session.access_token, role: member?.role || null, district: member?.district || '',
+    roles: member ? [...new Set([member.role, ...(Array.isArray(member.extra_roles) ? member.extra_roles : [])].filter(Boolean))] : [],
     userId: session.user?.id || member?.user_id || null, name: session.displayName || '', email: session.user?.email || '', churchId: server().churchId || null,
     builtInServer: !!server().builtIn, hasServer: hasServer(), busy,
   });

@@ -22,7 +22,9 @@
     system: { name: '기기 기본 글꼴', note: '인터넷 없이도 같음', css: '', family: '' },
   };
   const MODES = { light: '밝게', dark: '어둡게', auto: '기기 설정 따라' };
-  const SIZES = { xxs: { name: '아주 작게', px: 14 }, xs: { name: '작게', px: 15 }, s: { name: '보통', px: 16 }, m: { name: '크게', px: 17.5 }, l: { name: '아주 크게', px: 19.5 } };
+  // 어르신도 읽기 편하도록 '보통'(16px)보다 작게는 두지 않습니다. 예전에 고른 '작게'·'아주 작게'는 '보통'으로 보입니다.
+  const SIZES = { s: { name: '보통', px: 16 }, m: { name: '크게', px: 17.5 }, l: { name: '아주 크게', px: 19.5 } };
+  const OLD_SIZE = { xxs: 's', xs: 's' };
   const DEFAULT = { palette: 'pine', font: 'pretendard', size: 'm', mode: 'light' };
   const FALLBACK = '"Apple SD Gothic Neo", "Malgun Gothic", system-ui, -apple-system, "Segoe UI", sans-serif';
   const KEY = 'hamkke.theme.v1';
@@ -30,7 +32,7 @@
   // 저장된 값이 이상해도 항상 쓸 수 있는 테마로 바로잡습니다.
   function normalize(t) {
     t = t || {};
-    return { palette: PALETTES[t.palette] ? t.palette : DEFAULT.palette, font: FONTS[t.font] ? t.font : DEFAULT.font, size: SIZES[t.size] ? t.size : DEFAULT.size, mode: MODES[t.mode] ? t.mode : DEFAULT.mode };
+    return { palette: PALETTES[t.palette] ? t.palette : DEFAULT.palette, font: FONTS[t.font] ? t.font : DEFAULT.font, size: SIZES[t.size] ? t.size : OLD_SIZE[t.size] || DEFAULT.size, mode: MODES[t.mode] ? t.mode : DEFAULT.mode };
   }
   const fromState = state => normalize((state?.settings || []).find(x => x.id === 'theme'));
   // CSS 변수 값(시험하기 쉽게 따로 계산)

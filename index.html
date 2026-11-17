@@ -6,12 +6,14 @@
 <meta name="theme-color" content="#2f5b45">
 <meta name="author" content="AI 목양지원센터 / 이세진 목사">
 <title>함께 돌봄</title>
-<link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="함께 돌봄">
+<script>/* 역할별 주소(?for=…)마다 탭 이름·홈 화면 이름을 다르게 */(function(){var f='';try{f=new URLSearchParams(location.search).get('for')||'';}catch(e){}
+var M={visit:['manifest-visit.webmanifest','돌봄 심방','심방사역자'],'new':['manifest-new.webmanifest','돌봄 새가족','새가족위원'],admin:['manifest-admin.webmanifest','돌봄 관리','관리자']}[f]||['manifest.webmanifest','함께 돌봄',''];
+var l=document.createElement('link');l.rel='manifest';l.href=M[0];document.head.appendChild(l);var t=document.querySelector('meta[name=apple-mobile-web-app-title]');if(t)t.content=M[1];if(M[2])document.title='함께 돌봄 · '+M[2];})();</script>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="styles.css">
 <script src="theme.js"></script>
