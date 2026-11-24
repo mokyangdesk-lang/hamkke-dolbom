@@ -2,15 +2,15 @@
    모든 색은 테마의 강조색(--accent-l / --accent-d, theme.js가 넣음)에서 만들어집니다.
    글꼴(--font)과 기본 글자 크기(--base)도 테마가 정합니다. 밝은 화면·어두운 화면 모두 지원. */
 :root {
-  --accent-l: #2E6B4F; --accent-d: #7FC9A2;
+  --accent-l: #2F5545; --accent-d: #7FC9A2;
   --font: "Pretendard Variable", Pretendard, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
   --base: 17.5px;
   --accent: var(--accent-l);
   --on-accent: #ffffff;
-  --bg: color-mix(in oklab, var(--accent) 5%, #f6f6f3);
+  --bg: #fcf5e5; --gold: #d0b973;
   --surface: #ffffff;
   --surface-2: color-mix(in oklab, var(--accent) 4%, #f9f9f7);
-  --ink: #191d1b; --ink-2: #3a413d; --muted: #576059; /* 흐린 글씨도 어르신이 읽을 수 있게(대비 약 6:1) */
+  --ink: #29342f; --ink-2: #3a413d; --muted: #576059; /* 흐린 글씨도 어르신이 읽을 수 있게(대비 약 6:1) */
   --line: color-mix(in oklab, var(--accent) 9%, #e3e5e1);
   --line-strong: color-mix(in oklab, var(--accent) 14%, #cdd2cc);
   --accent-soft: color-mix(in oklab, var(--accent) 11%, #ffffff);
@@ -54,6 +54,7 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 :root { --fs-xs: max(13px, .78rem); /* 가장 작은 글씨도 13px 아래로 내려가지 않음 */ --fs-sm: .875rem; --fs-md: 1rem; --fs-lg: 1.15rem; --fs-xl: 1.4rem; --fs-2xl: 1.85rem; }
+html[data-reading] { font-size: max(var(--base), 21px); }
 html { font-size: var(--base); -webkit-text-size-adjust: 100%; }
 body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); line-height: 1.6; letter-spacing: -0.006em; -webkit-font-smoothing: antialiased; word-break: keep-all; overflow-wrap: break-word; } /* 한글은 낱말 단위로 줄바꿈. 이름·낱말은 중간에서 끊지 않음(칸이 좁아도 글자 단위로 쪼개지 않음) */
 h1 { font-size: var(--fs-2xl); } h2 { font-size: var(--fs-lg); } h3 { font-size: var(--fs-md); }
@@ -516,3 +517,36 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 /* 로고 이미지(십자가와 잎): 글자 표시 대신 그림. 그림 자체에 둥근 모서리와 바탕색이 있음 */
 .brand-mark.logo { background: transparent; overflow: hidden; padding: 0; }
 .brand-mark.logo img { display: block; width: 100%; height: 100%; }
+
+/* 함께 돌봄 2.0 */
+.login-card { width: min(470px, calc(100vw - 32px)); border-top: 4px solid var(--gold); }
+.login-brand { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.login-brand .brand-mark { width: 72px; height: 72px; }
+.login-card .primary { width: 100%; margin-top: 8px; }
+#readingMode[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-text); }
+.top-acts button, .tabs button, .subtabs button, .person .acts > *, .nc-icons .ib { min-height: 44px; }
+.care-overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 8px; margin-block: 16px; }
+.care-overview span { display: flex; align-items: baseline; gap: 8px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-sm); }
+.care-overview b { color: var(--accent-text); font-size: var(--fs-xl); }
+.care-timeline { list-style: none; margin: 0; padding: 0 0 0 12px; border-inline-start: 2px solid var(--gold); }
+.care-timeline li { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 10px 4px; }
+.care-timeline li + li { border-top: 1px solid var(--line); }
+#visitForm details[open] summary { margin-bottom: 8px; }
+#visitForm details > label { display: block; margin-bottom: 12px; }
+@media (max-width: 640px) {
+  .login-card { padding: 24px 18px; }
+  .person .acts { flex-wrap: wrap; }
+  html[data-reading] .top { position: static; }
+  html[data-reading] .tabs { top: 0; }
+}
+.newcomer-timeline { border-inline-start: 2px solid var(--gold); padding-inline-start: 12px; }
+@media (max-width: 400px) {
+  .person { flex-wrap: wrap; }
+  .person > .grow { flex-basis: 100%; }
+  .care-overview { grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr)); }
+}
+#pastorCareRequest[aria-pressed="true"] {
+  background: var(--warn-soft);
+  color: var(--warn);
+  border-color: currentColor;
+}

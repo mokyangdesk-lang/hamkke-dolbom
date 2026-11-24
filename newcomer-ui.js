@@ -210,11 +210,11 @@
         ${wel.size === 4 ? `<form id="felForm" class="fel-grid">${names.fellowship.map((n, i) => `<label class="check"><input type="checkbox" name="w${i + 1}" ${fel.has(String(i + 1)) ? 'checked disabled' : ''} ${edit && p.mentorId ? '' : 'disabled'}> ${i + 1}주 · ${esc(n)}</label>`).join('')}
           ${edit && p.mentorId ? `<label>이수 날짜<input type="date" name="date" value="${today()}" max="${today()}"></label><div class="acts"><button class="primary">체크한 주 저장</button></div>` : `<p class="muted small">${p.mentorId ? '' : '양육도우미 매칭 뒤에 기록합니다.'}</p>`}</form>` : '<p class="muted small">4과목을 모두 마치면 새사귐반을 기록할 수 있습니다.</p>'}</details>
       ${edit ? `<div class="acts"><button type="button" id="toggleStatus">${pr.status === 'paused' ? '다시 진행' : '중단으로 표시'}</button></div>` : ''}
-      <h3>소통 메모</h3><p class="notice small">새가족위원 · 교구 목사 · 새가족팀이 함께 봅니다. <b>건강·가정사 등 민감한 내용은 쓰지 마세요.</b></p>
-      <div class="note-list">${notes.length ? notes.map(n => `<div class="note ${n.request && !n.resolvedAt ? 'req' : ''}"><div class="muted small">${esc(n.authorName || '')} · ${esc(new Date(n.createdAt).toLocaleString('ko-KR'))}${n.request ? (n.resolvedAt ? ` · 확인함(${esc(n.resolvedBy || '')})` : ' · 확인 요청') : ''}</div><p>${esc(n.text)}</p>
+      <h3>돌봄 소통 기록</h3><p class="notice small">새가족위원 · 교구 목사 · 새가족팀이 함께 봅니다. <b>건강·가정사 등 민감한 내용은 쓰지 마세요.</b></p>
+      <div class="note-list newcomer-timeline">${notes.length ? notes.map(n => `<div class="note ${n.request && !n.resolvedAt ? 'req' : ''}"><div class="muted small">${esc(n.authorName || '')} · ${esc(new Date(n.createdAt).toLocaleString('ko-KR'))}${n.request ? (n.resolvedAt ? ` · 확인함(${esc(n.resolvedBy || '')})` : ' · 확인 요청') : ''}</div><p>${esc(n.text)}</p>
         ${n.request && !n.resolvedAt && n.authorId !== me.userId ? `<button type="button" data-resolve="${esc(n.id)}">확인했습니다</button>` : ''}</div>`).join('') : '<p class="muted small">아직 메모가 없습니다.</p>'}</div>
       <form id="noteForm" class="stack"><label class="visually-hidden" for="noteText">메모</label><textarea id="noteText" name="text" rows="2" maxlength="300" placeholder="예: 사랑방 배정 부탁드립니다"></textarea>
-        <label class="check"><input type="checkbox" name="request"> 확인 요청으로 남기기(받는 분 화면에 표시)</label><div class="acts"><button class="primary">메모 남기기</button></div></form>`);
+        <label class="check"><input type="checkbox" name="request"> 목회자·새가족팀 확인 요청</label><div class="acts"><button class="primary">메모 남기기</button></div></form>`);
     const again = () => { closeDialog(); detail(ctx, pid); };
     const save = async (fn, msg) => { closeDialog(); if (await ctx.commit(fn, msg)) detail(root.HamkkeApp.ctx(), pid); };
     $$('[data-done]', body).forEach(b => b.onclick = () => stageDialog(ctx, p, b.dataset.done, 'done', again));

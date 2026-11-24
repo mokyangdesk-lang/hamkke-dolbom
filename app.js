@@ -97,12 +97,23 @@
     admin: { title: '관리자 로그인', tags: ['전체 관리자'], note: '전체 관리자는 아래 "관리자 이메일 로그인"을 쓰세요. 교구 목사님과 새가족팀은 이름과 코드로 로그인합니다.' },
   };
   const entry = () => { try { return ENTRY[new URLSearchParams(location.search).get('for')] || null; } catch (_) { return null; } };
+  function readingButton() {
+    return `<button type="button" id="readingMode" class="quiet" aria-pressed="${document.documentElement.hasAttribute('data-reading')}">큰 글씨</button>`;
+  }
+  function bindReading() {
+    const button = $('#readingMode');
+    button.onclick = () => {
+      const enabled = button.getAttribute('aria-pressed') !== 'true';
+      root.HamkkeTheme.setReading(enabled);
+      button.setAttribute('aria-pressed', String(enabled));
+    };
+  }
   function loginHTML(message) {
     const s = me(), sv = store.server(), e = entry();
     return `<main class="login" id="main"><div class="login-card">
-      <div class="brand-mark logo" aria-hidden="true"><img src="icon.svg" alt=""></div><h1>${e ? esc(e.title) : '함께 돌봄'}</h1><p class="muted">${e ? '함께 돌봄 · ' : ''}심방 · 새가족 사역자의 수첩</p>
+      <div class="login-brand"><div class="brand-mark logo" aria-hidden="true"><img src="icon.svg" alt=""></div>${readingButton()}</div><h1>${e ? esc(e.title) : '함께 돌봄'}</h1><p class="muted">${e ? '함께 돌봄 · ' : ''}심방 · 새가족 사역자의 수첩</p>
       <div class="who-login" aria-label="이 화면에서 로그인하는 분">${(e ? e.tags : ['심방사역자', '새가족위원', '교구 목사', '새가족팀']).map(t => `<span>${esc(t)}</span>`).join('')}</div>
-      <p class="small must">${e ? esc(e.note) : '모두 이 화면에서 로그인합니다. 받은 코드에 맞는 화면(심방 또는 새가족)이 자동으로 열립니다.'}</p>
+      <p class="small must">${e ? esc(e.note) : '이름과 개인 코드로 로그인하면 맡은 사역 화면이 열립니다.'}</p>
       ${message ? `<p class="notice" role="alert">${esc(message)}</p>` : ''}
       ${s.hasServer ? '' : '<p class="notice">서버 정보가 아직 없습니다. 아래 "서버 정보 입력"을 관리자에게 받아 한 번 입력해 주세요.</p>'}
       <form id="codeLogin" class="stack">
@@ -125,6 +136,7 @@
     </div><p class="guide-link"><a href="guide/">처음이신가요? 사용 안내 보기</a></p><p class="credit">${esc(CREDIT)}</p></main>`;
   }
   function bindLogin(fill) {
+    bindReading();
     const code = $('#loginCode'), nameEl = $('#loginName');
     // 받은 문자를 통째로 붙여 넣어도 이름과 코드를 알아서 채웁니다. 소문자·띄어쓰기·하이픈 없이 쳐도 됩니다.
     const take = el => { const inv = el.value.length > 24 ? readInvite(el.value) : null; if (!inv) return false; if (inv.name && (el === nameEl || !nameEl.value.trim())) nameEl.value = inv.name; code.value = inv.code; if (el === nameEl && !inv.name) nameEl.value = ''; return true; };
@@ -164,7 +176,7 @@
     const P = Pages[page];
     return `<header class="top"><div class="brand"><span class="brand-mark sm logo" aria-hidden="true"><img src="icon.svg" alt=""></span><span>함께 돌봄</span><span class="ministry-tag">${esc(ministry)}</span></div>
       <div class="who"><b>${esc(m.name || '')}</b> <span class="muted">${esc(ROLE[m.role])}${m.district && ['district_pastor', 'visitor', 'committee'].includes(m.role) ? ' · ' + esc(m.district) : ''}</span></div>
-      <div class="top-acts"><span id="syncState" class="muted small" role="status">서버와 연결됨</span><button id="alertsBtn" class="${page === 'alerts' ? 'primary' : 'quiet'}" aria-label="알림 ${alerts}건">알림${alerts ? ` <span class="badge">${alerts}</span>` : ''}</button><button id="refreshBtn" class="quiet" title="다른 기기에서 바꾼 내용을 불러옵니다" aria-label="새로고침"><span aria-hidden="true">↻</span><span class="lbl">새로고침</span></button><button id="logoutBtn" class="quiet">로그아웃</button></div></header>
+      <div class="top-acts">${readingButton()}<span id="syncState" class="muted small" role="status">서버와 연결됨</span><button id="alertsBtn" class="${page === 'alerts' ? 'primary' : 'quiet'}" aria-label="알림 ${alerts}건">알림${alerts ? ` <span class="badge">${alerts}</span>` : ''}</button><button id="refreshBtn" class="quiet" title="다른 기기에서 바꾼 내용을 불러옵니다" aria-label="새로고침"><span aria-hidden="true">↻</span><span class="lbl">새로고침</span></button><button id="logoutBtn" class="quiet">로그아웃</button></div></header>
       ${roleBar(m)}
       ${m.role === 'admin' ? adminShell(m, P) : nav.length > 1 ? `<nav class="tabs" aria-label="메뉴">${nav.map(id => `<button data-page="${id}" class="${id === page ? 'active' : ''}" ${id === page ? 'aria-current="page"' : ''}>${esc(Pages[id]?.label || id)}</button>`).join('')}</nav>` : ''}
       ${m.role === 'admin' ? '' : `${m.role === 'visit_lead' ? districtBar(m).replace('class="admin-district"', 'class="admin-district lead"') : ''}<main id="main" class="page">${P ? P.render(ctx()) : ''}</main>`}
@@ -202,6 +214,7 @@
     document.body.className = 'm-' + MINISTRY[me().role]?.[1];
     setTitle(TITLE[me().role] || '');
     $('#app').innerHTML = shellHTML();
+    bindReading();
     const top = $('.top'); if (top) document.documentElement.style.setProperty('--top-h', top.offsetHeight + 'px');
     $$('[data-page]').forEach(b => b.onclick = () => go(b.dataset.page));
     $$('[data-role]').forEach(b => b.onclick = () => switchRole(b.dataset.role));

@@ -17,9 +17,16 @@
   function personRow(ctx, p, extra = '') {
     return `<div class="row person"><div class="grow"><b>${esc(p.name)}</b> ${isMine(ctx.me, p) ? '<span class="chip">내 담당</span>' : ''}${extra}
       <div class="muted small">최근 연락: ${lastLine(ctx.state, p)}</div></div>
-      <div class="acts">${p.phone ? `<a class="button" href="${M.telHref(p.phone)}">전화</a><button data-sms="${esc(p.id)}">문자</button>` : '<button type="button" disabled title="전화번호 없음">전화</button><button type="button" disabled title="전화번호 없음">문자</button>'}<button class="primary" data-rec="${esc(p.id)}">기록</button></div></div>`;
+      <div class="acts">${p.phone ? `<a class="button" href="${M.telHref(p.phone)}" aria-label="${esc(p.name)}님께 전화">전화</a><button data-sms="${esc(p.id)}" aria-label="${esc(p.name)}님께 문자">문자</button>` : '<button type="button" disabled title="전화번호 없음">전화</button><button type="button" disabled title="전화번호 없음">문자</button>'}<button class="primary" data-rec="${esc(p.id)}">기록</button><button class="quiet" data-history="${esc(p.id)}">돌봄 기록</button></div></div>`;
   }
   function bindRows(ctx) {
+    $$('[data-history]').forEach(b => b.onclick = () => {
+      const p = ctx.state.people.find(x => x.id === b.dataset.history);
+      if (!p) return;
+      const visits = K.visitsOf(ctx.state, p.id);
+      const entries = visits.map(v => `<li><time datetime="${esc(v.date)}">${esc(v.date)}</time><b>${esc(v.result)}</b>${v.careNeed === '목회자 상담 요청' ? '<span class="chip warn">목회자 상담 요청</span>' : ''}<span class="muted">${esc(v.authorName || '')}</span>${v.nextDate ? `<span>다음 연락 ${esc(v.nextDate)}</span>` : ''}</li>`);
+      dialog(p.name + ' · 돌봄 기록', entries.length ? `<ol class="care-timeline">${entries.join('')}</ol>` : '<p>아직 연락 기록이 없습니다.</p>');
+    });
     $$('[data-rec]').forEach(b => b.onclick = () => visitForm(ctx, b.dataset.rec));
     $$('[data-sms]').forEach(b => b.onclick = () => { flow = { step: 2, ids: [b.dataset.sms], tpl: '', text: '', i: 0 }; ctx.go('message'); });
   }
@@ -32,14 +39,25 @@
     const body = dialog(p.name + ' · 연락 기록', `<form id="visitForm" class="stack">
       <label>사역 날짜<input type="date" name="date" value="${today()}" max="${today()}" required></label>
       <fieldset class="field-set"><legend>연락 결과</legend><div class="choice-grid">${radios}</div></fieldset>
+      <div class="acts"><button type="button" id="pastorCareRequest" aria-pressed="false">목회자 상담 요청</button></div>
+      <details class="more"><summary>출석·돌봄 상태 및 후속 연락 기록</summary>
       <label>교회 출석 상황<select name="affiliation">${K.AFFILIATION.map(a => `<option ${a === (K.lastVisit(ctx.state, id)?.affiliation || '') ? 'selected' : ''}>${a}</option>`).join('')}</select></label>
       <label>돌봄 필요<select name="careNeed">${K.CARE_NEED.map(a => `<option>${a}</option>`).join('')}</select></label>
       <label>사역 내용 <span class="muted small">(짧게 · 건강·가정사 자세한 내용은 쓰지 않기)</span><textarea name="memo" maxlength="1000" rows="3"></textarea></label>
       <label>기도제목<textarea name="prayer" maxlength="500" rows="2"></textarea></label>
       <label class="check"><input type="checkbox" name="prayerInReport" checked> 기도제목을 주간 보고서에 넣기</label>
       <label>다음 연락 예정일 <span class="muted small">(있으면 "오늘 할 일"에 나타남)</span><input type="date" name="nextDate" min="${today()}"></label>
+      </details>
       ${recent.length ? `<details class="more"><summary>최근 연락 ${recent.length}건</summary>${recent.map(v => `<p class="small">${esc(v.date)} · ${esc(v.authorName || '')} · ${esc(v.result)}</p>`).join('')}</details>` : ''}
       <div class="acts"><button type="button" class="quiet" id="visitCancel">취소</button><button class="primary">저장</button></div></form>`);
+    const request = $('#pastorCareRequest', body);
+    const need = $('[name="careNeed"]', body);
+    const updateRequest = () => request.setAttribute('aria-pressed', String(need.value === '목회자 상담 요청'));
+    need.onchange = updateRequest;
+    request.onclick = () => {
+      need.value = need.value === '목회자 상담 요청' ? K.CARE_NEED[0] : '목회자 상담 요청';
+      updateRequest();
+    };
     $('#visitCancel', body).onclick = closeDialog;
     $('#visitForm', body).onsubmit = async e => {
       e.preventDefault(); const f = new FormData(e.target);
@@ -60,11 +78,23 @@
       const bdays = K.carePeople(s).map(p => ({ p, d: C.birthdayDistance(p, today()) })).filter(x => x.d !== null && x.d >= 0 && x.d <= 7 && scope(x.p)).sort((a, b) => a.d - b.d);
       const due = K.dueRecontacts(s).filter(x => scope(x.p));
       const long = K.longNoContact(s).filter(x => scope(x.p));
+      const requests = ctx.me.role === 'district_pastor'
+        ? K.carePeople(s).filter(p => p.district === ctx.me.district).map(p => ({
+          p, visit: K.visitsOf(s, p.id).find(v => v.careNeed === '목회자 상담 요청'),
+        })).filter(x => x.visit).sort((a, b) => b.visit.date.localeCompare(a.visit.date))
+        : [];
       const pending = ctx.me.role === 'visitor' && !K.latestReport(s, 'visit', ctx.me.userId, K.reportWindow(0).key) && K.visitDraft(s, ctx.me, K.reportWindow(0)).rows.length;
       const section = (title, hint, items) => `<section class="card"><div class="between"><h2>${title} <span class="chip">${items.length}</span></h2><span class="muted small">${hint}</span></div>
         ${items.length ? `<div class="list">${items.join('')}</div>` : '<p class="muted">없습니다.</p>'}</section>`;
       return `<div class="eyebrow">심방</div><h1 class="page-title">오늘 할 일</h1>
       <p class="subtitle">${esc(today())} · ${esc(ctx.me.district)} 전체(같은 교구 심방사역자와 함께 봄)</p>
+      <div class="care-overview" aria-label="돌봄 현황">
+        <span><b>${bdays.length}</b> 생일 예정</span>
+        <span><b>${due.length}</b> 다시 연락</span>
+        <span><b>${long.length}</b> 장기 미연락</span>
+      </div>
+      ${ctx.me.role === 'district_pastor' ? section('목회자 상담 요청 기록', '성도별 최근 요청', requests.map(({p, visit}) =>
+        personRow(ctx, p, ` <span class="chip warn">${esc(visit.date)} 요청</span>`))) : ''}
       ${pending ? `<button type="button" class="notice-btn" data-go="report">승인할 주간 보고서가 있습니다 →</button>` : ''}
       ${section('생일', '오늘부터 7일 안', bdays.map(x => personRow(ctx, x.p, ` <span class="chip warn">${x.d === 0 ? '오늘 생일' : x.d + '일 뒤 생일'}</span>`)))}
       ${section('다시 연락할 분', '정해 둔 날이 된 분', due.map(x => personRow(ctx, x.p, ` <span class="chip">예정 ${esc(x.v.nextDate)}</span>`)))}

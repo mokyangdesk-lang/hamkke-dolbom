@@ -4,7 +4,7 @@
   'use strict';
   // 색: 밝은 화면용(light)과 어두운 화면용(dark) 강조색 한 쌍. 나머지 색은 CSS가 이 색에서 만들어 냅니다.
   const PALETTES = {
-    pine: { name: '솔잎', light: '#2E6B4F', dark: '#7FC9A2' },
+    pine: { name: '솔잎', light: '#2F5545', dark: '#7FC9A2' },
     ocean: { name: '바다', light: '#285C8E', dark: '#8EBBEA' },
     grape: { name: '포도', light: '#5B4A92', dark: '#B9A8EE' },
     sunset: { name: '노을', light: '#A9522B', dark: '#F0A57E' },
@@ -28,6 +28,14 @@
   const DEFAULT = { palette: 'pine', font: 'pretendard', size: 'm', mode: 'light' };
   const FALLBACK = '"Apple SD Gothic Neo", "Malgun Gothic", system-ui, -apple-system, "Segoe UI", sans-serif';
   const KEY = 'hamkke.theme.v1';
+  const READING_KEY = 'hamkke.reading.v1';
+  function reading() {
+    try { return root.localStorage.getItem(READING_KEY) === 'on'; } catch (_) { return false; }
+  }
+  function setReading(enabled) {
+    root.document?.documentElement.toggleAttribute('data-reading', enabled);
+    try { root.localStorage.setItem(READING_KEY, enabled ? 'on' : 'off'); } catch (_) { }
+  }
 
   // 저장된 값이 이상해도 항상 쓸 수 있는 테마로 바로잡습니다.
   function normalize(t) {
@@ -59,8 +67,8 @@
     if (remember) { try { root.localStorage.setItem(KEY, JSON.stringify(t)); } catch (_) { } }
     return t;
   }
-  const api = { PALETTES, FONTS, SIZES, MODES, DEFAULT, normalize, fromState, vars, apply, remembered };
+  const api = { PALETTES, FONTS, SIZES, MODES, DEFAULT, normalize, fromState, vars, apply, remembered, setReading };
   root.HamkkeTheme = api;
   if (typeof module !== 'undefined') module.exports = api;
-  if (root.document) apply(remembered(), false); // 화면이 그려지기 전에 지난 테마로
+  if (root.document) { apply(remembered(), false); setReading(reading()); } // 화면이 그려지기 전에 지난 테마로
 })(typeof window !== 'undefined' ? window : globalThis);
