@@ -1,6 +1,6 @@
 /* 화면 파일만 저장해 둡니다(성도 자료는 저장하지 않음). 인터넷이 될 때는 항상 새 파일을 먼저 받습니다.
    꺼져 있을 때 알림: 서버가 보낸 짧은 문구("오늘 다시 연락할 분이 2명 있습니다")를 보여 주고, 누르면 앱을 엽니다. */
-const CACHE = 'hamkke-5-1-0-design-3';
+const CACHE = 'hamkke-5-1-0-design-4';
 const ASSETS = ['./', './index.html', './styles.css', './theme.js', './config.js', './core.js', './store.js', './ui.js', './care.js', './newcomer.js', './messages.js', './admin.js', './visit.js', './newcomer-ui.js', './stats.js', './notify.js', './app.js', './vendor/xlsx.full.min.js', './icon.svg', './icon-192.png', './icon-512.png', './apple-touch-icon.png', './manifest.webmanifest', './manifest-visit.webmanifest', './manifest-new.webmanifest', './manifest-admin.webmanifest', './guide/'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS.map(a => new Request(a, { cache: 'reload' }))))); self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))); self.clients.claim(); });

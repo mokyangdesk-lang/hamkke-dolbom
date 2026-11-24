@@ -572,7 +572,7 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
   .tabs button.active { border-color: var(--accent); }
 }
 @media (max-width: 480px) {
-  .admin-shell { display: flex; flex-direction: column; padding-bottom: 0; }
+  .admin-shell { display: flex; flex-direction: column; align-items: stretch; padding-bottom: 0; }
   .areas {
     position: static;
     grid-template-columns: repeat(3, minmax(0, 1fr));
