@@ -537,7 +537,6 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
   .login-card { padding: 24px 18px; }
   .person .acts { flex-wrap: wrap; }
   html[data-reading] .top { position: static; }
-  html[data-reading] .tabs { top: 0; }
 }
 .newcomer-timeline { border-inline-start: 2px solid var(--gold); padding-inline-start: 12px; }
 @media (max-width: 400px) {
@@ -550,3 +549,44 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
   color: var(--warn);
   border-color: currentColor;
 }
+
+/* 모바일에서는 모든 메뉴를 화면 너비 안에 표시합니다. */
+@media (max-width: 900px) {
+  .tabs, .subtabs {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 7.5rem), 1fr));
+    gap: 6px;
+    overflow: visible;
+  }
+  .tabs, .area-bar { position: static; }
+  .tabs button, .subtabs button, .area-text b {
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .tabs button, .subtabs button {
+    padding: 6px 8px;
+    line-height: 1.25;
+  }
+  .tabs button { background: var(--surface); border-color: var(--line); }
+  .tabs button.active { border-color: var(--accent); }
+}
+@media (max-width: 480px) {
+  .admin-shell { display: flex; flex-direction: column; padding-bottom: 0; }
+  .areas {
+    position: static;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+    border-top: 0;
+    border-bottom: 1px solid var(--line);
+    box-shadow: none;
+    padding: 8px max(12px, env(safe-area-inset-left));
+  }
+  .admin-shell ~ .credit { padding-bottom: calc(28px + env(safe-area-inset-bottom)); }
+  .role-bar .seg {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 7.5rem), 1fr));
+  }
+  .role-bar .seg button { min-width: 0; overflow-wrap: anywhere; }
+}
+@media print { .tabs, .areas, .area-bar { display: none !important; } }
