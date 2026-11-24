@@ -9,15 +9,19 @@
   const ago = d => { const n = K.daysBetween(d, today()); return n <= 0 ? '오늘' : n === 1 ? '어제' : n + '일 전'; };
 
   // 같은 교구 사역자끼리 명단 공유: 누가 언제 연락했는지 보여 겹치는 연락을 막습니다.
-  function lastLine(state, p) {
-    const v = K.lastVisit(state, p.id);
+  function lastLine(v) {
     return v ? `${esc(v.authorName || '')} · ${esc(ago(v.date))} · ${esc(v.result)}` : '연락 기록 없음';
   }
   const isMine = (me, p) => p.visitorId === me.userId;
   function personRow(ctx, p, extra = '') {
-    return `<div class="row person"><div class="grow"><b>${esc(p.name)}</b> ${isMine(ctx.me, p) ? '<span class="chip">내 담당</span>' : ''}${extra}
-      <div class="muted small">최근 연락: ${lastLine(ctx.state, p)}</div></div>
-      <div class="acts">${p.phone ? `<a class="button" href="${M.telHref(p.phone)}" aria-label="${esc(p.name)}님께 전화">전화</a><button data-sms="${esc(p.id)}" aria-label="${esc(p.name)}님께 문자">문자</button>` : '<button type="button" disabled title="전화번호 없음">전화</button><button type="button" disabled title="전화번호 없음">문자</button>'}<button class="primary" data-rec="${esc(p.id)}">기록</button><button class="quiet" data-history="${esc(p.id)}">돌봄 기록</button></div></div>`;
+    const latest = K.lastVisit(ctx.state, p.id);
+    return `<article class="person">
+      <div class="person-info">
+        <div class="person-name"><b>${esc(p.name)}</b>${isMine(ctx.me, p) ? '<span class="chip">내 담당</span>' : ''}${extra}</div>
+        <p class="person-status">${latest ? '최근 연락: ' : ''}${lastLine(latest)}</p>
+      </div>
+      <button type="button" class="quiet person-history" data-history="${esc(p.id)}" aria-label="${esc(p.name)}님 돌봄 기록 보기">이력</button>
+      <div class="person-actions">${p.phone ? `<a class="button" href="${M.telHref(p.phone)}" aria-label="${esc(p.name)}님께 전화">전화</a><button data-sms="${esc(p.id)}" aria-label="${esc(p.name)}님께 문자">문자</button>` : '<button type="button" disabled title="전화번호 없음">전화</button><button type="button" disabled title="전화번호 없음">문자</button>'}<button type="button" class="primary" data-rec="${esc(p.id)}" aria-label="${esc(p.name)}님 연락 기록 작성">기록</button></div></article>`;
   }
   function bindRows(ctx) {
     $$('[data-history]').forEach(b => b.onclick = () => {
@@ -84,7 +88,7 @@
         })).filter(x => x.visit).sort((a, b) => b.visit.date.localeCompare(a.visit.date))
         : [];
       const pending = ctx.me.role === 'visitor' && !K.latestReport(s, 'visit', ctx.me.userId, K.reportWindow(0).key) && K.visitDraft(s, ctx.me, K.reportWindow(0)).rows.length;
-      const section = (title, hint, items) => `<section class="card"><div class="between"><h2>${title} <span class="chip">${items.length}</span></h2><span class="muted small">${hint}</span></div>
+      const section = (title, hint, items) => `<section class="card care-section"><header class="care-section-heading"><h2>${title} <span class="chip">${items.length}</span></h2><p class="muted small">${hint}</p></header>
         ${items.length ? `<div class="list">${items.join('')}</div>` : '<p class="muted">없습니다.</p>'}</section>`;
       return `<div class="eyebrow">심방</div><h1 class="page-title">오늘 할 일</h1>
       <p class="subtitle">${esc(today())} · ${esc(ctx.me.district)} 전체(같은 교구 심방사역자와 함께 봄)</p>
@@ -96,9 +100,9 @@
       ${ctx.me.role === 'district_pastor' ? section('목회자 상담 요청 기록', '성도별 최근 요청', requests.map(({p, visit}) =>
         personRow(ctx, p, ` <span class="chip warn">${esc(visit.date)} 요청</span>`))) : ''}
       ${pending ? `<button type="button" class="notice-btn" data-go="report">승인할 주간 보고서가 있습니다 →</button>` : ''}
-      ${section('생일', '오늘부터 7일 안', bdays.map(x => personRow(ctx, x.p, ` <span class="chip warn">${x.d === 0 ? '오늘 생일' : x.d + '일 뒤 생일'}</span>`)))}
       ${section('다시 연락할 분', '정해 둔 날이 된 분', due.map(x => personRow(ctx, x.p, ` <span class="chip">예정 ${esc(x.v.nextDate)}</span>`)))}
-      ${section('오래 연락 못 한 분', `통화·방문이 ${K.settings(s).longDays}일 넘게 없는 분`, long.slice(0, 30).map(x => personRow(ctx, x.p, ` <span class="chip warn">${x.days !== null ? x.days + '일째' : K.lastVisit(s, x.p.id) ? '통화·방문 없음' : '연락 기록 없음'}</span>`)))}`;
+      ${section('생일', '오늘부터 7일 안', bdays.map(x => personRow(ctx, x.p, ` <span class="chip">${x.d === 0 ? '오늘 생일' : x.d + '일 뒤 생일'}</span>`)))}
+      ${section('오래 연락 못 한 분', `통화·방문이 ${K.settings(s).longDays}일 넘게 없는 분`, long.slice(0, 30).map(x => personRow(ctx, x.p, !K.lastVisit(s, x.p.id) ? '' : ` <span class="chip warn">${x.days !== null ? x.days + '일째' : '통화·방문 없음'}</span>`)))}`;
     },
     bind(ctx) { bindRows(ctx); $$('[data-go]').forEach(b => b.onclick = () => ctx.go(b.dataset.go)); },
   };

@@ -339,7 +339,6 @@ dialog::backdrop { background: rgb(10 14 12 / .42); backdrop-filter: blur(3px); 
   /* 단추는 같은 너비 칸에: 기본 2칸, 새가족 4칸, 교구 성도 3칸. "다음 할 일" 단추는 한 줄 전체 */
   .row > .acts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .row.nc-row > .acts { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .row.person > .acts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .row > .acts > button, .row > .acts > .button { width: 100%; min-width: 0; padding: 0 6px; white-space: normal; line-height: 1.2; }
   .row > .acts > [data-next] { grid-column: 1 / -1; }
   .row.pick { grid-template-columns: auto minmax(0, 1fr); }
@@ -524,7 +523,7 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .login-brand .brand-mark { width: 72px; height: 72px; }
 .login-card .primary { width: 100%; margin-top: 8px; }
 #readingMode[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-text); }
-.top-acts button, .tabs button, .subtabs button, .person .acts > *, .nc-icons .ib { min-height: 44px; }
+.top-acts button, .tabs button, .subtabs button, .nc-icons .ib { min-height: 44px; }
 .care-overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 8px; margin-block: 16px; }
 .care-overview span { display: flex; align-items: baseline; gap: 8px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-sm); }
 .care-overview b { color: var(--accent-text); font-size: var(--fs-xl); }
@@ -535,13 +534,10 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 #visitForm details > label { display: block; margin-bottom: 12px; }
 @media (max-width: 640px) {
   .login-card { padding: 24px 18px; }
-  .person .acts { flex-wrap: wrap; }
   html[data-reading] .top { position: static; }
 }
 .newcomer-timeline { border-inline-start: 2px solid var(--gold); padding-inline-start: 12px; }
 @media (max-width: 400px) {
-  .person { flex-wrap: wrap; }
-  .person > .grow { flex-basis: 100%; }
   .care-overview { grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr)); }
 }
 #pastorCareRequest[aria-pressed="true"] {
@@ -590,3 +586,36 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
   .role-bar .seg button { min-width: 0; overflow-wrap: anywhere; }
 }
 @media print { .tabs, .areas, .area-bar { display: none !important; } }
+
+/* 심방 목록 */
+.care-section-heading { margin-bottom: 10px; }
+.care-section-heading h2, .care-section-heading p { margin: 0; }
+.care-section-heading h2 { margin-bottom: 4px; }
+.person {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 15rem);
+  align-items: center;
+  gap: 8px 12px;
+  padding: 12px 0;
+}
+.person + .person { border-top: 1px solid var(--line); }
+.person-name { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; }
+.person-name b { font-size: var(--fs-lg); overflow-wrap: anywhere; }
+.person-name .chip { white-space: normal; }
+.person-status { margin: 2px 0 0; color: var(--muted); font-size: var(--fs-sm); }
+.person-history { min-height: 44px; padding-inline: 8px; color: var(--accent-text); font-size: var(--fs-sm); }
+.person-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; min-width: 0; }
+.person-actions > :is(button, .button) {
+  min-width: 0;
+  min-height: 44px;
+  padding: 6px 2px;
+  font-size: var(--fs-sm);
+  line-height: 1.25;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  .person { grid-template-columns: minmax(0, 1fr) auto; }
+  .person-actions { grid-column: 1 / -1; }
+  .care-section .list { gap: 0; }
+}
